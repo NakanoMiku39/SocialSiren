@@ -1,0 +1,7 @@
+bert-net/
+trash
+translator2.py
+*.db
+nllb-200-distilled-600M
+dataset
+model

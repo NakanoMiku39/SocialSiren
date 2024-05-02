@@ -4,9 +4,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
 import configparser
 from selenium.webdriver.chrome.options import Options
+import class_datatypes
+import class_model
 import class_spider
 import class_translator
-import class_datatypes
 from sqlalchemy import create_engine, Table, Column, Integer, Text, ForeignKey, MetaData
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 
@@ -15,7 +16,7 @@ class Backend:
     def __init__(self, db_path):
         self.session = self.init_db(db_path)
         self.create_tables()
-        self.translator, self.spider = self.init_subsystems()
+        self.translator, self.spider, self.model = self.init_subsystems()
         self.run_subsystems()
         
     def init_db(self, db_path):
@@ -41,11 +42,18 @@ class Backend:
         # 初始化 Spider
         options = Options()
         # options.add_argument("--headless")  # 设置为无头模式
+        options.add_argument("--no-sandbox") 
+        options.add_argument('--disable-dev-shm-usage')
         options.add_argument(r"user-data-dir=/home/nakanomiku/.config/google-chrome")
         url = "https://treehole.pku.edu.cn/web/"
         spider = class_spider.Spider(config, url, self.session, options)
         
-        return translator, spider
+        # 初始化 DisasterTweetModel
+        train_path = 'dataset/train.csv'
+        test_path = 'dataset/test.csv'
+        model = class_model.DisasterTweetModel(train_path, test_path, self.session)
+        
+        return translator, spider, model
     
     def run_subsystems(self):
         """启动子系统线程"""
@@ -53,8 +61,7 @@ class Backend:
         translator_thread = threading.Thread(target=self.translator.run, daemon=True)
         spider_thread = threading.Thread(target=self.spider.run, daemon=True)
         translator_thread.start()
-        # spider_thread.start()
-        self.spider.run()
+        spider_thread.start()
         
     def get_message(self):
         """从数据库获取信息并返回"""

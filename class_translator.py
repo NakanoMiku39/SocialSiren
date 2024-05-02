@@ -1,32 +1,72 @@
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
-
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import nltk
 from nltk.tokenize import sent_tokenize
+import time
+from class_datatypes import TranslatedTopics, TranslatedReplies, Topics, Replies
 
 class Translator:
-    def __init__(self, model_name):
+    def __init__(self, model_name, Session):
+        self.Session = Session
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-        nltk.download('punkt')  # 仅首次需要下载
+        nltk.download('punkt')
 
-    def translate(self, text, src_lang="zh", tgt_lang="eng_Latn"):
+    def translate_text(self, text, src_lang="zh", tgt_lang="eng_Latn", max_new_tokens=500):
         sentences = sent_tokenize(text)
         translations = []
         for sentence in sentences:
-            processed_text = self.preprocess_text(sentence)
-            inputs = self.tokenizer(processed_text, return_tensors="pt", padding=True)
-            translated_tokens = self.model.generate(inputs.input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id[tgt_lang])
+            # Assume `preprocess_text` is defined somewhere in the class or module
+            # processed_text = self.preprocess_text(sentence) 
+            inputs = self.tokenizer(sentence, return_tensors="pt", padding=True)
+            translated_tokens = self.model.generate(
+                inputs.input_ids, 
+                forced_bos_token_id=self.tokenizer.lang_code_to_id[tgt_lang],
+                max_new_tokens=max_new_tokens
+            )
             translated_text = self.tokenizer.decode(translated_tokens[0], skip_special_tokens=True)
             translations.append(translated_text)
         return " ".join(translations)
 
-    def preprocess_text(self, text):
-        text = text.replace("，", ", ").replace("。", ". ")
-        return text
+    def translate_database_contents(self):
+        db_session = self.Session()
+        # 查询所有未翻译的Topics
+        print("[Debug] Translator tries to write to database")
+        try:
+            with db_session.no_autoflush:
+                untranslated_topics = db_session.query(Topics).filter(~Topics.id.in_(db_session.query(TranslatedTopics.id))).all()
+                for topic in untranslated_topics:
+                    # print("[Debug] Translating a topic")
+                    translated_content = self.translate_text(topic.content)
+                    translated_topic = TranslatedTopics(id=topic.id, content=translated_content)
+                    db_session.add(translated_topic)
 
-# 示例使用
-model_name = "translator/nllb-200-distilled-600M"
-translator = Translator(model_name)
-text = "还是这个翻译器好用，不知道这个翻译器会不会现在把我杀了。"
-translated_text = translator.translate(text)
-print(translated_text)
+                # 查询所有未翻译的Replies
+                untranslated_replies = db_session.query(Replies).filter(~Replies.id.in_(db_session.query(TranslatedReplies.id))).all()
+                for reply in untranslated_replies:
+                    # print("[Debug] Translating a reply")
+                    translated_content = self.translate_text(reply.content)
+                    translated_reply = TranslatedReplies(id=reply.id, content=translated_content, topic_id=reply.topic_id)
+                    db_session.add(translated_reply)
+
+        
+            # 尝试提交所有翻译到数据库
+            db_session.commit()
+        except Exception as e:
+            # 如果出现异常，进行回滚
+            print("[Debug] Translator write failed")
+            db_session.rollback()
+            raise e
+        finally:
+            db_session.close()
+            print("[Debug] Translator write successful")
+
+    def run(self):
+        print("[Debug] Translator activated")
+        while True:
+            print("[Debug] Translator begins a new translating round")
+            self.translate_database_contents()
+            time.sleep(20)  # Adjust this sleep time as necessary for your application
+    
+    def __del__(self):
+            """资源清理"""
+            self.Session.remove()  # 关闭 session

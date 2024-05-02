@@ -15,9 +15,10 @@ import sqlite3
 import configparser
 import time
 import random
+from class_datatypes import TranslatedTopics, TranslatedReplies, Topics, Replies
 
-class spider:
-    def __init__(self, config, url, db_path, options) -> None:
+class Spider:
+    def __init__(self, config, url, Session, options) -> None:
         self.username = config['User']['username'] # 学号
         self.password = config['User']['password'] # 密码
         self.entries = config['User']['entries'] # 希望爬取的树洞数
@@ -25,28 +26,7 @@ class spider:
         self.timeout = config['User']['timeout'] # 树洞刷新间隔
         self.google = webdriver.Chrome(options=options)
         self.url = url
-        self.db_session = self.init_db(db_path)
-        self.create_tables()
-
-    def init_db(self, db_path):
-        """初始化数据库连接池和会话"""
-        engine = create_engine(f'sqlite:///{db_path}', connect_args={"check_same_thread": False}, echo=True)
-        Session = scoped_session(sessionmaker(bind=engine))
-        return Session()
-    
-    def create_tables(self):
-        """创建数据库表"""
-        metadata = MetaData()
-        topics = Table('topics', metadata,
-            Column('id', Integer, primary_key=True),
-            Column('content', Text)
-        )
-        replies = Table('replies', metadata,
-            Column('id', Integer, primary_key=True),
-            Column('content', Text),
-            Column('topic_id', Integer, ForeignKey('topics.id'))
-        )
-        metadata.create_all(self.db_session.bind)
+        self.Session = Session
         
     def login(self):
         self.google.get(self.url)
@@ -75,28 +55,8 @@ class spider:
             # 为输入验证码空出时间
             if "login" in self.google.current_url:
                 time.sleep(30)
-        print("Logged in")
+        print("[Debug] Logged in")
 
-    def crawl(self):
-        try:
-            flow_items = self.google.find_elements(By.XPATH, "//div[contains(@class,'flow-item-row flow-item-row-with-prompt')]")
-            action = ActionChains(self.google)
-            # 点击是为了确保之后的ARROW_DOWN能正常下滑窗口
-            self.google.find_element(By.XPATH, "//div[contains(@class,'title-bar')]").click()
-            # 判断是否能爬取到指定数量的树洞，如果不能就继续往下滑动
-            while len(flow_items) < int(self.entries):
-                self.google.execute_script("window.scrollBy(0, 1000);")
-                action.send_keys(Keys.ARROW_DOWN).perform()  # 模拟按下 Arrow Down 键
-                flow_items = self.google.find_elements(By.XPATH, "//div[contains(@class,'flow-item-row flow-item-row-with-prompt')]")
-
-            # 爬取
-            self.crawlFlowItems(flow_items)
-            print("Total entries: %d" % len(flow_items))
-            
-        except KeyboardInterrupt:
-            self.__del__()
-            return
-        
     def realtime(self):      
         try:  
             while True:
@@ -114,54 +74,58 @@ class spider:
             return
                       
     def crawlFlowItems(self, flow_items):
-        for flow_item in flow_items:
-            # 打开每一条树洞的sidebar
-            flow_item.click()
-            # 等待sidebar加载出来
-            time.sleep(random.randint(1, 5))
-            sidebar = WebDriverWait(self.google, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//div[contains(@class,'sidebar')]"))
-            )
+        db_session = self.Session()
+        print("[Debug] Spider tries to write to database")
+        try:
+            for flow_item in flow_items:
+                flow_item.click()
+                time.sleep(random.randint(1, 5))
+                sidebar = WebDriverWait(self.google, 10).until(
+                    EC.presence_of_element_located((By.XPATH, "//div[contains(@class,'sidebar')]"))
+                )
+                codes_in_sidebar = sidebar.find_elements(By.CLASS_NAME, "box-id")
+                box_contents_in_sidebar = sidebar.find_elements(By.XPATH, "//div[contains(@class,'box-content box-content-detail')]")
             
-            # 获取指定数量树洞
-            box_headers_in_sidebar = sidebar.find_elements(By.XPATH, "//div[contains(@class,'box-header box-header-top-icon')]")
-            codes_in_sidebar = sidebar.find_elements(By.CLASS_NAME, "box-id")
-            box_contents_in_sidebar = sidebar.find_elements(By.XPATH, "//div[contains(@class,'box-content box-content-detail')]")
-            # 查询是否已经插入过了
-            query = "SELECT * FROM topics WHERE id = ?"
-            cursor = self.db.execute(query, (int(codes_in_sidebar[0].text[1:]),))
-            if cursor.fetchone():
-                print("Found repeated, quitting current crawl loop")
-                close = sidebar.find_element(By.CSS_SELECTOR, "span.icon.icon-close") 
-                close.click()
-                break
+                # Database operations
+                for index, (code, box_content) in enumerate(zip(codes_in_sidebar, box_contents_in_sidebar)):
+                    code = int(code.text[1:])
+                    with db_session.no_autoflush:
+                        if index == 0:
+                            # Check if the topic already exists                        
+                            existing_topic = db_session.query(Topics).filter_by(id=code).first()
+                            if not existing_topic:
+                                new_topic = Topics(id=code, content=box_content.text)
+                                db_session.add(new_topic)
+                        else:
+                            existing_reply = db_session.query(Replies).filter_by(id=code).first()
+                            if not existing_reply:
+                                new_reply = Replies(id=code, content=box_content.text, topic_id=int(codes_in_sidebar[0].text[1:]))
+                                db_session.add(new_reply)
                 
-            # 迭代洞中的每一条内容
-            for index, (code, box_content) in enumerate(zip(codes_in_sidebar, box_contents_in_sidebar)):
-                # 当前洞/回复号
-                code = int(code.text[1:])
-                
-                if index == 0:
-                    self.db.execute("INSERT INTO topics (id, content) VALUES (?, ?)", (code, box_content.text))
-                else:
-                    self.db.execute("INSERT INTO replies (id, content, topic_id) VALUES (?, ?, ?)", (code, box_content.text, int(codes_in_sidebar[0].text[1:])))
-                
-                # print(f"Header Text: {code}")
-                # print(f"Content Text: {box_content.text}")    
-                    
-            # 关闭sidebar
-            close = sidebar.find_element(By.CSS_SELECTOR, "span.icon.icon-close") 
-            close.click()
-            self.db_session.commit()  # 确保在适当时候提交会话
-            time.sleep(random.randint(1, 5))
+                sidebar.find_element(By.CSS_SELECTOR, "span.icon.icon-close").click()
+                time.sleep(random.randint(1, 5))
+        
+                # 尝试提交所有翻译到数据库
+                db_session.commit()
+        except Exception as e:
+            # 如果出现异常，进行回滚
+            print("[Debug] Spider write failed")
+            db_session.rollback()
+            raise e
+        finally:
+            db_session.close()
+            print("[Debug] Spider write successful")
             
+        
+        
     def run(self):
+        print("[Debug] Spider activated")
         self.login()
         time.sleep(5)
         self.realtime()
         
     def __del__(self):
         """资源清理"""
-        self.db_session.remove()  # 关闭 session
+        self.Session.remove()  # 关闭 session
         self.google.quit()
         print("Quitted")

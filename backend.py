@@ -58,7 +58,7 @@ class Backend:
         model = class_model.DisasterTweetModel(train_path, test_path, self.session)
         
         # 初始化SubscriptionSystem
-        subscriptionsystem = class_SubscriptionSystem.SubscriptionSystem('smtphz.qiye.163.com', 587, '***', '***', self.session)
+        subscriptionsystem = class_SubscriptionSystem.SubscriptionSystem('220.197.30.134', 25, config['User']['email'], config['User']['password'], self.session)
 
         return translator, spider, model, subscriptionsystem
     
@@ -68,9 +68,11 @@ class Backend:
         translator_thread = threading.Thread(target=self.translator.run, daemon=True)
         spider_thread = threading.Thread(target=self.spider.run, daemon=True)
         model_thread = threading.Thread(target=self.model.run, daemon=True)
+        subscriptionsystem_thread = threading.Thread(target=self.subsriptionsystem.run, daemon=True)
         translator_thread.start()
         spider_thread.start()
         model_thread.start()
+        subscriptionsystem_thread.start()
 
     def get_all_results(self):
         """从数据库中获取所有结果记录"""
@@ -116,4 +118,4 @@ def get_messages():
     ])
 
 if __name__ == '__main__':
-    app.run(debug=True, port=2222)  
+    app.run(use_reloader=False, debug=True, port=2222)  

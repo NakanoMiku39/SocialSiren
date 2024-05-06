@@ -43,41 +43,42 @@ class DisasterTweetModel:
                 untranslated_topics = db_session.query(TranslatedTopics).filter(TranslatedTopics.processed == False).all()
                 untranslated_replies = db_session.query(TranslatedReplies).filter(TranslatedReplies.processed == False).all()
 
-                # Process topics
-                for trans_topic in untranslated_topics:
-                    original_topic = db_session.query(Topics).filter(Topics.id == trans_topic.id).first()  # Assuming there is a reference to the original topic
-                    if original_topic:
-                        predictions = self.model.predict([trans_topic.content])
-                        results = self.interpret_predictions(predictions, [trans_topic.content])
-                        for _, label, probability in results:
-                            new_result = Result(
-                                source_id=original_topic.id,
-                                content=original_topic.content,  # Use original content
-                                date_time=trans_topic.date_time,
-                                is_disaster=label,
-                                probability=probability,
-                                source_type='topic'
-                            )
-                            db_session.add(new_result)
-                            trans_topic.processed = True
+                with db_session.no_autoflush:
+                    # Process topics
+                    for trans_topic in untranslated_topics:
+                        original_topic = db_session.query(Topics).filter(Topics.id == trans_topic.id).first()  # Assuming there is a reference to the original topic
+                        if original_topic:
+                            predictions = self.model.predict([trans_topic.content])
+                            results = self.interpret_predictions(predictions, [trans_topic.content])
+                            for _, label, probability in results:
+                                new_result = Result(
+                                    source_id=original_topic.id,
+                                    content=original_topic.content,  # Use original content
+                                    date_time=trans_topic.date_time,
+                                    is_disaster=label,
+                                    probability=probability,
+                                    source_type='topic'
+                                )
+                                db_session.add(new_result)
+                                trans_topic.processed = True
 
-                # Process replies
-                for trans_reply in untranslated_replies:
-                    original_reply = db_session.query(Replies).filter(Replies.id == trans_reply.id).first()  # Assuming there is a reference to the original reply
-                    if original_reply:
-                        predictions = self.model.predict([trans_reply.content])
-                        results = self.interpret_predictions(predictions, [trans_reply.content])
-                        for _, label, probability in results:
-                            new_result = Result(
-                                source_id=original_reply.id,
-                                content=original_reply.content,  # Use original content
-                                date_time=trans_reply.date_time,
-                                is_disaster=label,
-                                probability=probability,
-                                source_type='reply'
-                            )
-                            db_session.add(new_result)
-                            trans_reply.processed = True    
+                    # Process replies
+                    for trans_reply in untranslated_replies:
+                        original_reply = db_session.query(Replies).filter(Replies.id == trans_reply.id).first()  # Assuming there is a reference to the original reply
+                        if original_reply:
+                            predictions = self.model.predict([trans_reply.content])
+                            results = self.interpret_predictions(predictions, [trans_reply.content])
+                            for _, label, probability in results:
+                                new_result = Result(
+                                    source_id=original_reply.id,
+                                    content=original_reply.content,  # Use original content
+                                    date_time=trans_reply.date_time,
+                                    is_disaster=label,
+                                    probability=probability,
+                                    source_type='reply'
+                                )
+                                db_session.add(new_result)
+                                trans_reply.processed = True    
 
                 db_session.commit()  # Commit all changes
                 print("[Debug] Model write successful")

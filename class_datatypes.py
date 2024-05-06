@@ -42,6 +42,7 @@ class Result(Base):
     probability = Column(Float)    # 灾害的概率
     source_type = Column(String(50))  # 来源类型：'topic' 或 'reply'
     source_id = Column(Integer)       # 原始话题或回复的ID
+    processed = Column(Boolean, default=False)
         
 class Subscriber(Base):
     __tablename__ = 'subscribers'

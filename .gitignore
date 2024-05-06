@@ -6,3 +6,4 @@ nllb-200-distilled-600M
 dataset
 model
 data
+config.ini

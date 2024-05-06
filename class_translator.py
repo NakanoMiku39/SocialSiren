@@ -38,19 +38,16 @@ class Translator:
                 untranslated_replies = db_session.query(Replies).filter(Replies.processed == False).all()
 
                 for topic in untranslated_topics:
-                    # print("[Debug] Translating a topic")
                     translated_content = self.translate_text(topic.content)
                     translated_topic = TranslatedTopics(id=topic.id, content=translated_content, date_time=topic.date_time)
-                    db_session.add(translated_topic)
+                    db_session.merge(translated_topic)
                     topic.processed = True
 
-                # 查询所有未翻译的Replies
                 for reply in untranslated_replies:
-                    # print("[Debug] Translating a reply")
-                    translated_content = self.translate_text(reply.content)
-                    translated_reply = TranslatedReplies(id=reply.id, content=translated_content, date_time=reply.date_time, topic_id=reply.topic_id)
-                    db_session.add(translated_reply)
-                    reply.processed = True
+                        translated_content = self.translate_text(reply.content)
+                        translated_reply = TranslatedReplies(id=reply.id, content=translated_content, date_time=reply.date_time, topic_id=reply.topic_id)
+                        db_session.merge(translated_reply)
+                        reply.processed = True
 
             # 尝试提交所有翻译到数据库
             db_session.commit()

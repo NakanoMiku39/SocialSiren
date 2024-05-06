@@ -48,10 +48,10 @@ class DisasterTweetModel:
                     results = self.interpret_predictions(predictions, [topic])
                     for text, label, probability in results:
                         new_result = Result(
+                            id=topic.id,
                             content=text,
                             result=f"{label} with probability {probability}",
-                            source_type='topic',
-                            source_id=topic.id
+                            source_type='topic'
                         )
                         session.add(new_result)
                         topic.processed = True
@@ -62,10 +62,10 @@ class DisasterTweetModel:
                     results = self.interpret_predictions(predictions, [reply])
                     for text, label, probability in results:
                         new_result = Result(
+                            id=reply.id,
                             content=text,
                             result=f"{label} with probability {probability}",
-                            source_type='reply',
-                            source_id=reply.id
+                            source_type='reply'
                         )
                         session.add(new_result)
                         reply.processed = True

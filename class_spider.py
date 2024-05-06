@@ -7,15 +7,10 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from sqlalchemy import create_engine, Table, Column, Integer, Text, ForeignKey, MetaData
-from sqlalchemy.orm import sessionmaker, scoped_session
 from webdriver_manager.chrome import ChromeDriverManager
-import re
-import sqlite3
-import configparser
 import time
 import random
-from class_datatypes import TranslatedTopics, TranslatedReplies, Topics, Replies
+from class_datatypes import Topics, Replies
 
 class Spider:
     def __init__(self, config, url, Session, options) -> None:
@@ -27,6 +22,7 @@ class Spider:
         self.google = webdriver.Chrome(options=options)
         self.url = url
         self.Session = Session
+        print("[Debug] Spider initialized")
         
     def login(self):
         self.google.get(self.url)
@@ -107,21 +103,19 @@ class Spider:
         
                 # 尝试提交所有翻译到数据库
                 db_session.commit()
+                print("[Debug] Spider write successful")
         except Exception as e:
             # 如果出现异常，进行回滚
             print("[Debug] Spider write failed")
             db_session.rollback()
             raise e
         finally:
-            db_session.close()
-            print("[Debug] Spider write successful")
-            
-        
+            db_session.close()        
         
     def run(self):
         print("[Debug] Spider activated")
         self.login()
-        time.sleep(5)
+        time.sleep(10)
         self.realtime()
         
     def __del__(self):

@@ -7,12 +7,14 @@ class Topics(Base):
     __tablename__ = 'topics'
     id = Column(Integer, primary_key=True)
     content = Column(Text)
+    processed = Column(Boolean, default=False)
 
 class Replies(Base):
     __tablename__ = 'replies'
     id = Column(Integer, primary_key=True)
     content = Column(Text)
     topic_id = Column(Integer, ForeignKey('topics.id'))
+    processed = Column(Boolean, default=False)
 
 class TranslatedTopics(Base):
     __tablename__ = 'translated_topics'
@@ -29,9 +31,7 @@ class TranslatedReplies(Base):
     
 class Result(Base):
     __tablename__ = 'results'
-    
     id = Column(Integer, primary_key=True)
     content = Column(Text)
     result = Column(Text)
     source_type = Column(String(50))  # Either 'topic' or 'reply'
-    source_id = Column(Integer)  # Store the ID of the source topic or reply

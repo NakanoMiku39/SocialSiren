@@ -9,7 +9,8 @@ class Translator:
         self.Session = Session
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-        nltk.download('punkt')
+        # nltk.download('punkt')
+        print("[Debug] Translator initialized")
 
     def translate_text(self, text, src_lang="zh", tgt_lang="eng_Latn", max_new_tokens=500):
         sentences = sent_tokenize(text)
@@ -33,24 +34,27 @@ class Translator:
         print("[Debug] Translator tries to write to database")
         try:
             with db_session.no_autoflush:
-                untranslated_topics = db_session.query(Topics).filter(~Topics.id.in_(db_session.query(TranslatedTopics.id))).all()
+                untranslated_topics = db_session.query(Topics).filter(Topics.processed == False).all()
+                untranslated_replies = db_session.query(Replies).filter(Replies.processed == False).all()
+
                 for topic in untranslated_topics:
                     # print("[Debug] Translating a topic")
                     translated_content = self.translate_text(topic.content)
                     translated_topic = TranslatedTopics(id=topic.id, content=translated_content)
                     db_session.add(translated_topic)
+                    topic.processed = True
 
                 # 查询所有未翻译的Replies
-                untranslated_replies = db_session.query(Replies).filter(~Replies.id.in_(db_session.query(TranslatedReplies.id))).all()
                 for reply in untranslated_replies:
                     # print("[Debug] Translating a reply")
                     translated_content = self.translate_text(reply.content)
                     translated_reply = TranslatedReplies(id=reply.id, content=translated_content, topic_id=reply.topic_id)
                     db_session.add(translated_reply)
+                    reply.processed = True
 
-        
             # 尝试提交所有翻译到数据库
             db_session.commit()
+            print("[Debug] Translator write successful")
         except Exception as e:
             # 如果出现异常，进行回滚
             print("[Debug] Translator write failed")
@@ -58,14 +62,13 @@ class Translator:
             raise e
         finally:
             db_session.close()
-            print("[Debug] Translator write successful")
 
     def run(self):
         print("[Debug] Translator activated")
         while True:
             print("[Debug] Translator begins a new translating round")
             self.translate_database_contents()
-            time.sleep(20)  # Adjust this sleep time as necessary for your application
+            time.sleep(10)  # Adjust this sleep time as necessary for your application
     
     def __del__(self):
             """资源清理"""

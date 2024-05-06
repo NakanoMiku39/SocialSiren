@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Text, ForeignKey, String, Boolean
+from sqlalchemy import Column, Integer, Text, ForeignKey, String, Boolean, Float
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 
 Base = declarative_base()
@@ -33,9 +33,11 @@ class Result(Base):
     __tablename__ = 'results'
     id = Column(Integer, primary_key=True)
     content = Column(Text)
-    result = Column(Text)
-    source_type = Column(String(50))  # Either 'topic' or 'reply'
-
+    is_disaster = Column(Boolean)  # 是否为灾害
+    probability = Column(Float)    # 灾害的概率
+    source_type = Column(String(50))  # 来源类型：'topic' 或 'reply'
+    source_id = Column(Integer)       # 原始话题或回复的ID
+        
 class Subscriber(Base):
     __tablename__ = 'subscribers'
     id = Column(Integer, primary_key=True, autoincrement=True)

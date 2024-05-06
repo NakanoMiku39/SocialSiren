@@ -35,50 +35,52 @@ class DisasterTweetModel:
         """
         Continuously predict and save results from new translated topics and replies.
         """
-        session = self.Session()
+        db_session = self.Session()
         try:
             while True:
                 print("[Debug] Model tries to write to database")
-                untranslated_topics = session.query(TranslatedTopics).filter(TranslatedTopics.processed == False).all()
-                untranslated_replies = session.query(TranslatedReplies).filter(TranslatedReplies.processed == False).all()
+                untranslated_topics = db_session.query(TranslatedTopics).filter(TranslatedTopics.processed == False).all()
+                untranslated_replies = db_session.query(TranslatedReplies).filter(TranslatedReplies.processed == False).all()
 
-                    # Process topics
+             # Process topics
                 for topic in untranslated_topics:
                     predictions = self.model.predict([topic.content])
-                    results = self.interpret_predictions(predictions, [topic])
+                    results = self.interpret_predictions(predictions, [topic.content])
                     for text, label, probability in results:
                         new_result = Result(
-                            id=topic.id,
+                            source_id=topic.id,
                             content=text,
-                            result=f"{label} with probability {probability}",
+                            is_disaster=label,
+                            probability=probability,
                             source_type='topic'
                         )
-                        session.add(new_result)
+                        db_session.add(new_result)
                         topic.processed = True
 
                 # Process replies
                 for reply in untranslated_replies:
                     predictions = self.model.predict([reply.content])
-                    results = self.interpret_predictions(predictions, [reply])
+                    results = self.interpret_predictions(predictions, [reply.content])
                     for text, label, probability in results:
                         new_result = Result(
-                            id=reply.id,
+                            source_id=reply.id,
                             content=text,
-                            result=f"{label} with probability {probability}",
+                            is_disaster=label,
+                            probability=probability,
                             source_type='reply'
                         )
-                        session.add(new_result)
-                        reply.processed = True
-                    
-                session.commit()  # Commit all changes
+                        db_session.add(new_result)
+                        reply.processed = True    
+                                        
+                db_session.commit()  # Commit all changes
                 print("[Debug] Model write successful")
                 time.sleep(10)  # Wait before checking for more unprocessed entries
         except Exception as e:
-            session.rollback()
+            db_session.rollback()
             print(f"Error during processing: {e}")
             print("[Debug] Model write failed")
         finally:
-            session.close()
+            db_session.close()
             
     def interpret_predictions(self, predictions, items):
         """
@@ -90,12 +92,11 @@ class DisasterTweetModel:
         labels = ["Not a Disaster", "Disaster"]
         
         results = []
-        for index, item in zip(predicted_indices, items):
-            text = item.content  # Extracting text content from the object
-            label = labels[index]
-            probability = probabilities.numpy()[index, predicted_indices[index]]
-            results.append((text, label, f"{probability:.2f}"))
-        
+        for text, index in zip(items, predicted_indices):
+            label = bool(index)  # 将index转换为布尔值，假设'class 1'为灾害
+            probability = probabilities[:, index][0]  # Get the probability for the predicted class
+            results.append((text, label, float(probability)))
+            
         return results
 
     def run(self):

@@ -7,3 +7,4 @@ nltk
 matplotlib
 requests 
 beautifulsoup4
+flask-cors

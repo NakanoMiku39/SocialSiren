@@ -4,8 +4,8 @@
     <header class="header">
       <h1 class="website-name">SocialSiren</h1>
       <div class="email-input">
-        <input type="email" placeholder="Enter your email" class="input-style">
-        <button class="email-button">Subscribe</button>
+        <input type="email" v-model="email" placeholder="Enter your email" class="input-style">
+        <button class="email-button" @click="submitEmail">Subscribe</button>
       </div>
     </header>
 
@@ -23,11 +23,29 @@
 </template>
 
 <script>
+import axios from 'axios';
+
 export default {
-  name: 'Home'
+  name: 'Home',
+  data() {
+    return {
+      email: ''
+    };
+  },
+  methods: {
+    submitEmail() {
+      axios.post('http://localhost:2222/subscribe', { email: this.email })
+        .then(response => {
+          alert('Subscription successful!');
+        })
+        .catch(error => {
+          console.error('There was an error!', error);
+          alert('Subscription failed.');
+        });
+    }
+  }
 }
 </script>
-
 <style scoped>
 .container {
   display: flex;

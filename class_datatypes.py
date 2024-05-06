@@ -35,3 +35,8 @@ class Result(Base):
     content = Column(Text)
     result = Column(Text)
     source_type = Column(String(50))  # Either 'topic' or 'reply'
+
+class Subscriber(Base):
+    __tablename__ = 'subscribers'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(255), unique=True, nullable=False)

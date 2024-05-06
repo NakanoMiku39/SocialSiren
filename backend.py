@@ -8,6 +8,7 @@ import class_datatypes
 import class_model
 import class_spider
 import class_translator
+import class_SubscriptionSystem
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 import os
@@ -16,7 +17,7 @@ class Backend:
     def __init__(self, db_path):
         self.session = self.init_db(db_path)
         self.create_tables()
-        self.translator, self.spider, self.model = self.init_subsystems()
+        self.translator, self.spider, self.model, self.subsriptionsystem = self.init_subsystems()
         self.run_subsystems()
         
     def init_db(self, db_path):
@@ -54,7 +55,10 @@ class Backend:
         test_path = 'dataset/test.csv'
         model = class_model.DisasterTweetModel(train_path, test_path, self.session)
         
-        return translator, spider, model
+        # 初始化SubscriptionSystem
+        subscriptionsystem = class_SubscriptionSystem.SubscriptionSystem('smtphz.qiye.163.com', 587, '***', '***', self.session)
+
+        return translator, spider, model, subscriptionsystem
     
     def run_subsystems(self):
         """启动子系统线程"""
@@ -65,8 +69,6 @@ class Backend:
         translator_thread.start()
         spider_thread.start()
         model_thread.start()
-        # self.model.run()
-        # self.spider.run()
         
     def get_message(self):
         """从数据库获取信息并返回"""
@@ -87,6 +89,15 @@ backend = Backend('data/forum.db')  # 假设数据库文件名为 example.db
 def get_data():
     return {"message": "This is a cross-origin response"}
 
+# 邮箱订阅服务
+@app.route('/subscribe', methods=['POST'])
+def subscribe():
+    email = request.json['email']
+    try:
+        backend.subsriptionsystem.add_subscriber(email)
+        return jsonify({"message": "Subscription successful"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=2222)  # 更改运行端口为 8080
+    app.run(debug=True, port=2222)  

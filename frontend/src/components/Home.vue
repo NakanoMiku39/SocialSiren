@@ -14,6 +14,7 @@
       <h2>Latest Messages</h2>
       <ul>
         <li v-for="message in messages" :key="message.id">
+          <p>Posted on: {{ message.date_time }}</p>
           <p>{{ message.content }}</p>
           <p>Disaster: {{ message.is_disaster ? 'Yes' : 'No' }} - Probability: {{ message.probability }}</p>
           <p>Source: {{ message.source_type }} (ID: {{ message.source_id }})</p>

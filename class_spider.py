@@ -10,6 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 import time
 import random
+import re
 from class_datatypes import Topics, Replies
 
 class Spider:
@@ -79,23 +80,28 @@ class Spider:
                 sidebar = WebDriverWait(self.google, 10).until(
                     EC.presence_of_element_located((By.XPATH, "//div[contains(@class,'sidebar')]"))
                 )
+                headers = sidebar.find_elements(By.XPATH, "//div[contains(@class,'box-header box-header-top-icon')]")
                 codes_in_sidebar = sidebar.find_elements(By.CLASS_NAME, "box-id")
                 box_contents_in_sidebar = sidebar.find_elements(By.XPATH, "//div[contains(@class,'box-content box-content-detail')]")
-            
+         
                 # Database operations
-                for index, (code, box_content) in enumerate(zip(codes_in_sidebar, box_contents_in_sidebar)):
+                for index, (header, code, box_content) in enumerate(zip(headers, codes_in_sidebar, box_contents_in_sidebar)):
                     code = int(code.text[1:])
+                    full_header_text = header.text
+                    date_time_match = re.search(r'\d{2}-\d{2} \d{2}:\d{2}', full_header_text)
+                    date_time = date_time_match.group() if date_time_match else "Unknown Date-Time"
+                    
                     with db_session.no_autoflush:
                         if index == 0:
                             # Check if the topic already exists                        
                             existing_topic = db_session.query(Topics).filter_by(id=code).first()
                             if not existing_topic:
-                                new_topic = Topics(id=code, content=box_content.text)
+                                new_topic = Topics(id=code, content=box_content.text, date_time=date_time)
                                 db_session.add(new_topic)
                         else:
                             existing_reply = db_session.query(Replies).filter_by(id=code).first()
                             if not existing_reply:
-                                new_reply = Replies(id=code, content=box_content.text, topic_id=int(codes_in_sidebar[0].text[1:]))
+                                new_reply = Replies(id=code, content=box_content.text, topic_id=int(codes_in_sidebar[0].text[1:]), date_time=date_time)
                                 db_session.add(new_reply)
                 
                 sidebar.find_element(By.CSS_SELECTOR, "span.icon.icon-close").click()

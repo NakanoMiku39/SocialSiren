@@ -108,6 +108,7 @@ def get_messages():
             'id': result.id,
             'content': result.content,
             'is_disaster': result.is_disaster,
+            'date_time': result.date_time,
             'probability': result.probability,
             'source_type': result.source_type,
             'source_id': result.source_id

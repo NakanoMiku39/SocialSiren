@@ -40,7 +40,7 @@ class Translator:
                 for topic in untranslated_topics:
                     # print("[Debug] Translating a topic")
                     translated_content = self.translate_text(topic.content)
-                    translated_topic = TranslatedTopics(id=topic.id, content=translated_content)
+                    translated_topic = TranslatedTopics(id=topic.id, content=translated_content, date_time=topic.date_time)
                     db_session.add(translated_topic)
                     topic.processed = True
 
@@ -48,7 +48,7 @@ class Translator:
                 for reply in untranslated_replies:
                     # print("[Debug] Translating a reply")
                     translated_content = self.translate_text(reply.content)
-                    translated_reply = TranslatedReplies(id=reply.id, content=translated_content, topic_id=reply.topic_id)
+                    translated_reply = TranslatedReplies(id=reply.id, content=translated_content, date_time=reply.date_time, topic_id=reply.topic_id)
                     db_session.add(translated_reply)
                     reply.processed = True
 

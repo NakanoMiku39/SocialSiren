@@ -50,6 +50,7 @@ class DisasterTweetModel:
                         new_result = Result(
                             source_id=topic.id,
                             content=text,
+                            date_time=topic.date_time,
                             is_disaster=label,
                             probability=probability,
                             source_type='topic'
@@ -65,6 +66,7 @@ class DisasterTweetModel:
                         new_result = Result(
                             source_id=reply.id,
                             content=text,
+                            date_time=reply.date_time,
                             is_disaster=label,
                             probability=probability,
                             source_type='reply'

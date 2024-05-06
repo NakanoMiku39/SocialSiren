@@ -92,68 +92,76 @@ export default {
   font-size: 24px;
 }
 
-.email-input {
-  display: flex;
-  gap: 10px;
-}
-
-.input-style {
+.email-input input, .email-input button {
   padding: 10px;
   font-size: 16px;
-  border: 2px solid #bdc3c7;
-  border-radius: 5px;
-  outline: none;
-  transition: border-color 0.3s;
-}
-
-.input-style:focus {
-  border-color: #3498db;
-}
-
-.email-button {
-  padding: 10px 20px;
-  background-color: #3498db;
   border: none;
   border-radius: 5px;
-  color: white;
-  cursor: pointer;
-  transition: background-color 0.3s;
 }
 
-.email-button:hover {
+.email-input button {
+  background-color: #3498db;
+  color: white;
+  cursor: pointer;
+}
+
+.email-input button:hover {
   background-color: #2980b9;
 }
 
 .main-content {
   flex: 1;
   padding: 20px;
+  background-color: #f9f9f9;
+  border-top: 1px solid #ccc;
   overflow-y: auto;
-  background-color: #ecf0f1;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.main-content h2 {
   color: #2c3e50;
+  font-size: 22px;
+}
+
+.main-content ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.main-content li {
+  background: #fff;
+  margin-bottom: 10px;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 .message-box {
   display: flex;
   padding: 20px;
   background-color: #2c3e50;
+  border-top: 1px solid #aaa; /* 给消息框顶部添加边界线条 */
+}
+
+.message-box textarea, .message-box button {
+  border-radius: 5px;
+  padding: 10px;
 }
 
 .message-box textarea {
   flex: 1;
-  margin-right: 10px;
+  margin-right: 10px; /* 确保文本框和按钮之间有间隔 */
 }
 
-.send-button {
-  padding: 10px 20px;
+.message-box button {
   background-color: #3498db;
-  border: none;
-  border-radius: 5px;
   color: white;
   cursor: pointer;
-  transition: background-color 0.3s;
+  border: none;
+  padding: 10px 20px; /* 按钮更大更舒适的点击区域 */
 }
 
-.send-button:hover {
-  background-color: #2980b9;
+.message-box button:hover {
+  background-color: #2980b9; /* 鼠标悬浮时变暗 */
 }
 </style>

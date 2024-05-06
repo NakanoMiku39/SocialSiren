@@ -9,12 +9,14 @@ import class_model
 import class_spider
 import class_translator
 import class_SubscriptionSystem
-from sqlalchemy import create_engine
+from class_datatypes import Result
+from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker, scoped_session
 import os
 
 class Backend:
     def __init__(self, db_path):
+        print("[Debug] Creating Backend")
         self.session = self.init_db(db_path)
         self.create_tables()
         self.translator, self.spider, self.model, self.subsriptionsystem = self.init_subsystems()
@@ -69,13 +71,15 @@ class Backend:
         translator_thread.start()
         spider_thread.start()
         model_thread.start()
-        
-    def get_message(self):
-        """从数据库获取信息并返回"""
-        print("[Debug] Message received")
-        cursor = self.session.execute("SELECT message FROM messages LIMIT 1;")
-        message = cursor.fetchone()
-        return {'message': message[0]} if message else {'message': 'No data'}
+
+    def get_all_results(self):
+        """从数据库中获取所有结果记录"""
+        try:
+            results = self.session.query(Result).order_by(desc(Result.id)).all()
+            return results
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return []
 
 # 创建 Flask 应用
 app = Flask(__name__)
@@ -85,9 +89,6 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # 正确禁用 GPU
 
 backend = Backend('data/forum.db')  # 假设数据库文件名为 example.db
 
-@app.route('/api/data', methods=['POST'])
-def get_data():
-    return {"message": "This is a cross-origin response"}
 
 # 邮箱订阅服务
 @app.route('/subscribe', methods=['POST'])
@@ -98,6 +99,20 @@ def subscribe():
         return jsonify({"message": "Subscription successful"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/messages')
+def get_messages():
+    results = backend.get_all_results()
+    return jsonify([
+        {
+            'id': result.id,
+            'content': result.content,
+            'is_disaster': result.is_disaster,
+            'probability': result.probability,
+            'source_type': result.source_type,
+            'source_id': result.source_id
+        } for result in results
+    ])
 
 if __name__ == '__main__':
     app.run(debug=True, port=2222)  

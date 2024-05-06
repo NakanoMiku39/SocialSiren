@@ -11,9 +11,16 @@
 
     <!-- Main content section -->
     <main class="main-content">
-      <p>Welcome to SocialSiren, your hub for social updates and more. Stay connected, stay informed.</p>
+      <h2>Latest Messages</h2>
+      <ul>
+        <li v-for="message in messages" :key="message.id">
+          <p>{{ message.content }}</p>
+          <p>Disaster: {{ message.is_disaster ? 'Yes' : 'No' }} - Probability: {{ message.probability }}</p>
+          <p>Source: {{ message.source_type }} (ID: {{ message.source_id }})</p>
+        </li>
+      </ul>
     </main>
-
+    
     <!-- Footer section -->
     <footer class="message-box">
       <textarea placeholder="Type your message here" class="input-style"></textarea>
@@ -29,8 +36,12 @@ export default {
   name: 'Home',
   data() {
     return {
-      email: ''
+      email: '',
+      messages: []  // 确保这里定义了 messages，并初始化为空数组
     };
+  },
+  created() {
+    this.fetchMessages();
   },
   methods: {
     submitEmail() {
@@ -42,10 +53,20 @@ export default {
           console.error('There was an error!', error);
           alert('Subscription failed.');
         });
+    },
+    fetchMessages() {
+      axios.get('http://localhost:2222/api/messages')
+        .then(response => {
+          this.messages = response.data;
+        })
+        .catch(error => {
+          console.error('Error fetching messages:', error);
+        });
     }
   }
 }
 </script>
+
 <style scoped>
 .container {
   display: flex;

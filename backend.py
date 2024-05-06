@@ -1,5 +1,6 @@
 import threading
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 from sqlalchemy.orm import scoped_session, sessionmaker
 import configparser
 from selenium.webdriver.chrome.options import Options
@@ -76,21 +77,16 @@ class Backend:
 
 # 创建 Flask 应用
 app = Flask(__name__)
+CORS(app)
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # 正确禁用 GPU
-app.debug = False
-app.jinja_env.auto_reload = False
-app.config['TEMPLATES_AUTO_RELOAD'] = False # 禁用watchdog
-app.config['USE_RELOADER'] = False
 
 backend = Backend('data/forum.db')  # 假设数据库文件名为 example.db
 
 @app.route('/api/data', methods=['POST'])
 def get_data():
-    # 接收传入的 JSON 数据
-    data = request.get_json()
-    # 处理数据（这里仅作为示例返回相同的数据）
-    return jsonify(data)
+    return {"message": "This is a cross-origin response"}
+
 
 if __name__ == '__main__':
-    app.run(debug=True, port=9999)  # 更改运行端口为 8080
+    app.run(debug=True, port=2222)  # 更改运行端口为 8080

@@ -1,6 +1,5 @@
 import threading
-from flask import Flask, jsonify
-from sqlalchemy import create_engine
+from flask import Flask, jsonify, request
 from sqlalchemy.orm import scoped_session, sessionmaker
 import configparser
 from selenium.webdriver.chrome.options import Options
@@ -8,9 +7,9 @@ import class_datatypes
 import class_model
 import class_spider
 import class_translator
-from sqlalchemy import create_engine, Table, Column, Integer, Text, ForeignKey, MetaData
-from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
-
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, scoped_session
+import os
 
 class Backend:
     def __init__(self, db_path):
@@ -42,6 +41,7 @@ class Backend:
         # 初始化 Spider
         options = Options()
         # options.add_argument("--headless")  # 设置为无头模式
+        options.add_argument('--disable-gpu')
         options.add_argument("--no-sandbox") 
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument(r"user-data-dir=/home/nakanomiku/.config/google-chrome")
@@ -60,8 +60,12 @@ class Backend:
         print("[Debug] Waking up subsystems")
         translator_thread = threading.Thread(target=self.translator.run, daemon=True)
         spider_thread = threading.Thread(target=self.spider.run, daemon=True)
+        model_thread = threading.Thread(target=self.model.run, daemon=True)
         translator_thread.start()
         spider_thread.start()
+        model_thread.start()
+        # self.model.run()
+        # self.spider.run()
         
     def get_message(self):
         """从数据库获取信息并返回"""
@@ -72,12 +76,21 @@ class Backend:
 
 # 创建 Flask 应用
 app = Flask(__name__)
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # 正确禁用 GPU
+app.debug = False
+app.jinja_env.auto_reload = False
+app.config['TEMPLATES_AUTO_RELOAD'] = False # 禁用watchdog
+app.config['USE_RELOADER'] = False
+
 backend = Backend('data/forum.db')  # 假设数据库文件名为 example.db
 
-@app.route('/')
-def index():
-    """处理根 URL 的请求"""
-    # return jsonify(backend.get_message())
+@app.route('/api/data', methods=['POST'])
+def get_data():
+    # 接收传入的 JSON 数据
+    data = request.get_json()
+    # 处理数据（这里仅作为示例返回相同的数据）
+    return jsonify(data)
 
 if __name__ == '__main__':
     app.run(debug=True, port=9999)  # 更改运行端口为 8080

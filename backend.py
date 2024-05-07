@@ -10,7 +10,8 @@ import class_spider
 import class_translator
 import class_SubscriptionSystem
 import class_DataManager
-from class_datatypes import Result
+from class_datatypes import Result, UsersComments
+from datetime import datetime
 from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker, scoped_session
 import os
@@ -85,6 +86,26 @@ class Backend:
         except Exception as e:
             print(f"An error occurred: {e}")
             return []
+        
+    def process_message(self, content):
+        """处理并存储消息"""
+        db_session = self.session()
+        try:
+            new_comment = UsersComments(
+                content=content,
+                date_time=datetime.now(),  # 使用当前时间
+                processed=False
+            )
+            db_session.add(new_comment)
+            db_session.commit()
+            print(f"[Debug] Message stored: {content}")
+            return {"status": "success", "message": "Message processed and stored successfully"}
+        except Exception as e:
+            db_session.rollback()
+            print(f"[Debug] Error storing message: {e}")
+            return {"status": "error", "message": "Failed to store the message"}
+        finally:
+            db_session.close()
 
 # 创建 Flask 应用
 app = Flask(__name__)
@@ -132,5 +153,11 @@ def get_messages():
         } for result in results
     ])
     
+@app.route('/api/send-message', methods=['POST'])
+def send_message():
+    message_content = request.json['content']
+    response = backend.process_message(message_content)
+    return jsonify(response)
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', use_reloader=False, debug=True, port=2222)  

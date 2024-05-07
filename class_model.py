@@ -5,7 +5,7 @@ import pandas as pd
 import tensorflow as tf
 import keras_nlp
 from sklearn.model_selection import train_test_split
-from class_datatypes import Topics, Replies, TranslatedTopics, TranslatedReplies, Result
+from class_datatypes import Topics, Replies, UsersComments, TranslatedTopics, TranslatedReplies, TranslatedUsersComments, Result
 from transformers import BertTokenizer
 
 class DisasterTweetModel:
@@ -42,6 +42,7 @@ class DisasterTweetModel:
                 print("[Debug] Model tries to write to database")
                 untranslated_topics = db_session.query(TranslatedTopics).filter(TranslatedTopics.processed == False).all()
                 untranslated_replies = db_session.query(TranslatedReplies).filter(TranslatedReplies.processed == False).all()
+                untranslated_comments = db_session.query(TranslatedUsersComments).filter(TranslatedUsersComments.processed == False).all()
 
                 with db_session.no_autoflush:
                     # Process topics
@@ -79,6 +80,24 @@ class DisasterTweetModel:
                                 )
                                 db_session.add(new_result)
                                 trans_reply.processed = True    
+                                
+                    # Process comments
+                    for trans_comment in untranslated_comments:
+                        original_comment = db_session.query(UsersComments).filter(UsersComments.id == trans_comment.id).first()  # Assuming there is a reference to the original reply
+                        if original_comment:
+                            predictions = self.model.predict([trans_comment.content])
+                            results = self.interpret_predictions(predictions, [trans_comment.content])
+                            for _, label, probability in results:
+                                new_result = Result(
+                                    source_id=original_comment.id,
+                                    content=original_comment.content,  # Use original content
+                                    date_time=trans_comment.date_time,
+                                    is_disaster=label,
+                                    probability=probability,
+                                    source_type='comment'
+                                )
+                                db_session.add(new_result)
+                                trans_comment.processed = True    
 
                 db_session.commit()  # Commit all changes
                 print("[Debug] Model write successful")

@@ -2,7 +2,7 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import nltk
 from nltk.tokenize import sent_tokenize
 import time
-from class_datatypes import TranslatedTopics, TranslatedReplies, Topics, Replies
+from class_datatypes import TranslatedTopics, TranslatedReplies, TranslatedUsersComments, Topics, Replies, UsersComments
 
 class Translator:
     def __init__(self, model_name, Session):
@@ -36,6 +36,7 @@ class Translator:
             with db_session.no_autoflush:
                 untranslated_topics = db_session.query(Topics).filter(Topics.processed == False).all()
                 untranslated_replies = db_session.query(Replies).filter(Replies.processed == False).all()
+                untranslated_comments = db_session.query(UsersComments).filter(UsersComments.processed == False).all()
 
                 for topic in untranslated_topics:
                     translated_content = self.translate_text(topic.content)
@@ -44,10 +45,16 @@ class Translator:
                     topic.processed = True
 
                 for reply in untranslated_replies:
-                        translated_content = self.translate_text(reply.content)
-                        translated_reply = TranslatedReplies(id=reply.id, content=translated_content, date_time=reply.date_time, topic_id=reply.topic_id)
-                        db_session.merge(translated_reply)
-                        reply.processed = True
+                    translated_content = self.translate_text(reply.content)
+                    translated_reply = TranslatedReplies(id=reply.id, content=translated_content, date_time=reply.date_time, topic_id=reply.topic_id)
+                    db_session.merge(translated_reply)
+                    reply.processed = True
+                        
+                for comment in untranslated_comments:
+                    translated_content = self.translate_text(comment.content)
+                    translated_comment = TranslatedUsersComments(id=comment.id, content=translated_content, date_time=comment.date_time)
+                    db_session.merge(translated_comment)
+                    comment.processed = True
 
             # 尝试提交所有翻译到数据库
             db_session.commit()

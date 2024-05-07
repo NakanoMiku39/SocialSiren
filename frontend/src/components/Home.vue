@@ -14,6 +14,7 @@
         <option value="all">All Sources</option>
         <option value="topic">Topic</option>
         <option value="reply">Reply</option>
+        <option value="comment">User Comment</option>
       </select>
       <select v-model="filters.isDisaster">
         <option value="all">Both</option>
@@ -42,10 +43,10 @@
     
     <!-- Footer section -->
     <footer class="message-box">
-      <textarea placeholder="Type your message here" class="input-style"></textarea>
-      <button class="send-button">Send</button>
+      <textarea v-model="messageContent" placeholder="Type your message here" class="input-style"></textarea>
+      <button class="send-button" @click="sendMessage">Send</button>
     </footer>
-  </div>
+    </div>
 </template>
 
 <script>
@@ -58,7 +59,7 @@ export default {
       email: '',
       messages: [],  // 确保这里定义了 messages，并初始化为空数组
       filters: {
-        isDisaster: 'all',
+        isDisaster: 'true',
         sourceType: 'all'
       },
       sortOrder: 'true'
@@ -92,6 +93,22 @@ export default {
           alert('Subscription failed.');
         });
     },
+    sendMessage() {
+      if (!this.messageContent.trim()) {
+        alert('Message cannot be empty!');
+        return;
+      }
+      const message = { content: this.messageContent };
+      axios.post('http://10.129.199.88:2222/api/send-message', message)
+        .then(response => {
+          alert('Message sent successfully!');
+          this.messageContent = '';  // 清空输入框
+        })
+        .catch(error => {
+          console.error('Error sending message:', error);
+          alert('Failed to send message.');
+        });
+    }
   }
 }
 </script>

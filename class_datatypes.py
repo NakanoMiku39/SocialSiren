@@ -18,6 +18,13 @@ class Replies(Base):
     date_time = Column(DateTime)
     processed = Column(Boolean, default=False)
 
+class UsersComments(Base):
+    __tablename__ = 'comments'
+    id = Column(Integer, primary_key=True)
+    content = Column(Text)
+    date_time = Column(DateTime)
+    processed = Column(Boolean, default=False)
+
 class TranslatedTopics(Base):
     __tablename__ = 'translated_topics'
     id = Column(Integer, primary_key=True)
@@ -33,6 +40,13 @@ class TranslatedReplies(Base):
     topic_id = Column(Integer, ForeignKey('translated_topics.id'))
     processed = Column(Boolean, default=False)
     
+class TranslatedUsersComments(Base):
+    __tablename__ = 'translated_comments'
+    id = Column(Integer, primary_key=True)
+    content = Column(Text)
+    date_time = Column(DateTime)
+    processed = Column(Boolean, default=False)
+
 class Result(Base):
     __tablename__ = 'results'
     id = Column(Integer, primary_key=True)

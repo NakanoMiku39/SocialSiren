@@ -12,6 +12,7 @@ import time
 import random
 import re
 from class_datatypes import Topics, Replies
+from datetime import datetime
 
 class Spider:
     def __init__(self, config, url, Session, options) -> None:
@@ -91,17 +92,25 @@ class Spider:
                     date_time_match = re.search(r'\d{2}-\d{2} \d{2}:\d{2}', full_header_text)
                     date_time = date_time_match.group() if date_time_match else "Unknown Date-Time"
                     
+                    try:
+                        # Assume `date_time_str` is extracted from your web scraping logic
+                        current_year = datetime.now().year
+                        date_time_obj = datetime.strptime(f"{current_year}-{date_time}", "%Y-%m-%d %H:%M")
+                    except ValueError:
+                        print("Error: Incorrect date format.")
+                        date_time_obj = None
+
                     with db_session.no_autoflush:
                         if index == 0:
                             # Check if the topic already exists                        
                             existing_topic = db_session.query(Topics).filter_by(id=code).first()
                             if not existing_topic:
-                                new_topic = Topics(id=code, content=box_content.text, date_time=date_time)
+                                new_topic = Topics(id=code, content=box_content.text, date_time=date_time_obj)
                                 db_session.add(new_topic)
                         else:
                             existing_reply = db_session.query(Replies).filter_by(id=code).first()
                             if not existing_reply:
-                                new_reply = Replies(id=code, content=box_content.text, topic_id=int(codes_in_sidebar[0].text[1:]), date_time=date_time)
+                                new_reply = Replies(id=code, content=box_content.text, topic_id=int(codes_in_sidebar[0].text[1:]), date_time=date_time_obj)
                                 db_session.add(new_reply)
                 
                 sidebar.find_element(By.CSS_SELECTOR, "span.icon.icon-close").click()

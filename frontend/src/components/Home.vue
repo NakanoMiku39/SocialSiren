@@ -9,6 +9,24 @@
       </div>
     </header>
 
+    <div class="filter-section">
+      <select v-model="filters.sourceType">
+        <option value="all">All Sources</option>
+        <option value="topic">Topic</option>
+        <option value="reply">Reply</option>
+      </select>
+      <select v-model="filters.isDisaster">
+        <option value="all">Both</option>
+        <option value="true">Disaster</option>
+        <option value="false">Not Disaster</option>
+      </select>
+      <select v-model="sortOrder">
+        <option value="true">Newest First</option>
+        <option value="false">Oldest First</option>
+      </select>
+      <button @click="fetchMessages">Apply Filters</button>
+    </div>
+
     <!-- Main content section -->
     <main class="main-content">
       <h2>Latest Messages</h2>
@@ -38,15 +56,34 @@ export default {
   data() {
     return {
       email: '',
-      messages: []  // 确保这里定义了 messages，并初始化为空数组
+      messages: [],  // 确保这里定义了 messages，并初始化为空数组
+      filters: {
+        isDisaster: 'all',
+        sourceType: 'all'
+      },
+      sortOrder: 'true'
     };
   },
   created() {
     this.fetchMessages();
   },
   methods: {
+    fetchMessages() {
+      const params = {
+        ...this.filters,
+        orderBy: 'date_time',
+        orderDesc: this.sortOrder
+      };
+      axios.get('http://10.129.199.88:2222/api/messages', { params })
+        .then(response => {
+          this.messages = response.data;
+        })
+        .catch(error => {
+          console.error('Error fetching messages:', error);
+        });
+    },
     submitEmail() {
-      axios.post('http://localhost:2222/subscribe', { email: this.email })
+      axios.post('http://10.129.199.88:2222/subscribe', { email: this.email })
         .then(response => {
           alert('Subscription successful!');
         })
@@ -55,15 +92,6 @@ export default {
           alert('Subscription failed.');
         });
     },
-    fetchMessages() {
-      axios.get('http://localhost:2222/api/messages')
-        .then(response => {
-          this.messages = response.data;
-        })
-        .catch(error => {
-          console.error('Error fetching messages:', error);
-        });
-    }
   }
 }
 </script>
@@ -163,5 +191,33 @@ export default {
 
 .message-box button:hover {
   background-color: #2980b9; /* 鼠标悬浮时变暗 */
+}
+
+.filter-section {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px;
+  background-color: #f4f4f4; /* 轻灰色背景 */
+  border-radius: 8px; /* 轻微的圆角 */
+  margin: 10px 0; /* 增加一些外边距 */
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* 添加轻微的阴影效果 */
+}
+
+.filter-section select, .filter-section button {
+  padding: 10px;
+  margin-right: 10px;
+  border: 1px solid #ccc; /* 给下拉菜单和按钮添加边框 */
+  border-radius: 5px; /* 轻微的圆角效果 */
+  background: white;
+  cursor: pointer;
+}
+
+.filter-section button {
+  background-color: #007BFF; /* Bootstrap 主题蓝色 */
+  color: white;
+}
+
+.filter-section button:hover {
+  background-color: #0056b3; /* 鼠标悬停时更深的蓝色 */
 }
 </style>

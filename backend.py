@@ -9,6 +9,7 @@ import class_model
 import class_spider
 import class_translator
 import class_SubscriptionSystem
+import class_DataManager
 from class_datatypes import Result
 from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -19,7 +20,7 @@ class Backend:
         print("[Debug] Creating Backend")
         self.session = self.init_db(db_path)
         self.create_tables()
-        self.translator, self.spider, self.model, self.subsriptionsystem = self.init_subsystems()
+        self.translator, self.spider, self.model, self.subsriptionsystem, self.datamanager = self.init_subsystems()
         self.run_subsystems()
         
     def init_db(self, db_path):
@@ -60,7 +61,9 @@ class Backend:
         # 初始化SubscriptionSystem
         subscriptionsystem = class_SubscriptionSystem.SubscriptionSystem('220.197.30.134', 25, config['User']['email'], config['User']['password'], self.session)
 
-        return translator, spider, model, subscriptionsystem
+        # 初始化DataManager
+        datamanager = class_DataManager.DataManager(self.session)
+        return translator, spider, model, subscriptionsystem, datamanager
     
     def run_subsystems(self):
         """启动子系统线程"""
@@ -104,18 +107,30 @@ def subscribe():
 
 @app.route('/api/messages')
 def get_messages():
-    results = backend.get_all_results()
+    # 接收前端参数，'all' 表示不过滤该条件
+    filters = {
+        'source_type': None if request.args.get('sourceType') == 'all' else request.args.get('sourceType'),
+        'is_disaster': None if request.args.get('isDisaster') == 'all' else request.args.get('isDisaster') in ['true', 'True', '1', True] if request.args.get('isDisaster') is not None else None
+    }
+    order_by = request.args.get('orderBy', 'date_time')
+    order_desc = request.args.get('orderDesc', 'true') in ['true', 'True', '1', True]    
+    
+    print("filters:", filters)
+    print("order_by: ", order_by)
+    print("order_desc: ", order_desc)
+    results = backend.datamanager.get_data(filters=filters, order_by=order_by, order_desc=order_desc)
+    
     return jsonify([
         {
             'id': result.id,
             'content': result.content,
             'is_disaster': result.is_disaster,
-            'date_time': result.date_time,
             'probability': result.probability,
             'source_type': result.source_type,
-            'source_id': result.source_id
+            'source_id': result.source_id,
+            'date_time': result.date_time.isoformat() if result.date_time else None
         } for result in results
     ])
-
+    
 if __name__ == '__main__':
-    app.run(use_reloader=False, debug=True, port=2222)  
+    app.run(host='0.0.0.0', use_reloader=False, debug=True, port=2222)  

@@ -44,9 +44,15 @@
     <!-- Footer section -->
     <footer class="message-box">
       <textarea v-model="messageContent" placeholder="Type your message here" class="input-style"></textarea>
-      <button class="send-button" @click="sendMessage">Send</button>
+      <div class="captcha-and-send">
+          <div class="captcha-wrapper">
+              <img :src="captchaSrc" alt="Captcha" @click="refreshCaptcha" class="captcha-image">
+              <input type="text" v-model="captchaInput" placeholder="Enter captcha here" class="captcha-input">
+          </div>
+          <button class="send-button" @click="sendMessage">Send</button>
+      </div>
     </footer>
-    </div>
+  </div>
 </template>
 
 <script>
@@ -57,7 +63,10 @@ export default {
   data() {
     return {
       email: '',
+      messageContent: '', // 添加这行确保定义了 messageContent
       messages: [],  // 确保这里定义了 messages，并初始化为空数组
+      captchaInput: '',
+      captchaSrc: '/captcha',  // 初始验证码图片地址
       filters: {
         isDisaster: 'true',
         sourceType: 'all'
@@ -67,6 +76,7 @@ export default {
   },
   created() {
     this.fetchMessages();
+    this.refreshCaptcha();
   },
   methods: {
     fetchMessages() {
@@ -87,6 +97,7 @@ export default {
       axios.post('http://10.129.199.88:2222/subscribe', { email: this.email })
         .then(response => {
           alert('Subscription successful!');
+          this.email = '';
         })
         .catch(error => {
           console.error('There was an error!', error);
@@ -98,16 +109,31 @@ export default {
         alert('Message cannot be empty!');
         return;
       }
-      const message = { content: this.messageContent };
-      axios.post('http://10.129.199.88:2222/api/send-message', message)
+      if (!this.captchaInput.trim()) {
+        alert('Captcha cannot be empty!');
+        return;
+      }
+      const message = {
+        content: this.messageContent,
+        captcha: this.captchaInput
+      };
+      // const message = { content: this.messageContent };
+      axios.post('http://10.129.199.88:2222/api/send-message', message, { withCredentials: true })
         .then(response => {
           alert('Message sent successfully!');
           this.messageContent = '';  // 清空输入框
+          this.captchaInput = '';
+          this.refreshCaptcha();  // 刷新验证码
         })
         .catch(error => {
           console.error('Error sending message:', error);
-          alert('Failed to send message.');
+          alert('Failed to send message. Please check the captcha and try again.');
+          this.refreshCaptcha();  // 出错时刷新验证码
         });
+    },
+    refreshCaptcha() {
+      // 刷新验证码
+      this.captchaSrc = `http://10.129.199.88:2222/captcha?rand=${Math.random()}`;
     }
   }
 }
@@ -183,31 +209,48 @@ export default {
 
 .message-box {
   display: flex;
+  flex-direction: column;
   padding: 20px;
   background-color: #2c3e50;
-  border-top: 1px solid #aaa; /* 给消息框顶部添加边界线条 */
 }
 
-.message-box textarea, .message-box button {
-  border-radius: 5px;
+.captcha-and-send {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* 确保验证码和发送按钮在页面宽度较宽时保持间隔 */
+}
+
+.captcha-wrapper {
+  display: flex;
+  align-items: center;
+  margin-right: 10px; /* 确保验证码和发送按钮之间有间隔 */
+}
+
+.captcha-image {
+  cursor: pointer;
+  margin-right: 10px; /* 图片与输入框之间的间隔 */
+  width: 120px;
+  height: 40px;
+}
+
+.captcha-input {
   padding: 10px;
+  border: 1px solid #aaa;
+  border-radius: 5px;
+  flex-grow: 1; /* 输入框填充剩余空间 */
 }
 
-.message-box textarea {
-  flex: 1;
-  margin-right: 10px; /* 确保文本框和按钮之间有间隔 */
-}
-
-.message-box button {
+.send-button {
+  padding: 10px 20px;
   background-color: #3498db;
   color: white;
-  cursor: pointer;
   border: none;
-  padding: 10px 20px; /* 按钮更大更舒适的点击区域 */
+  cursor: pointer;
+  border-radius: 5px;
 }
 
-.message-box button:hover {
-  background-color: #2980b9; /* 鼠标悬浮时变暗 */
+.send-button:hover {
+  background-color: #2980b9;
 }
 
 .filter-section {
@@ -237,4 +280,5 @@ export default {
 .filter-section button:hover {
   background-color: #0056b3; /* 鼠标悬停时更深的蓝色 */
 }
+
 </style>

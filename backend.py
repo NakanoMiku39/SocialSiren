@@ -1,5 +1,5 @@
 import threading
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file, session
 from flask_cors import CORS
 from sqlalchemy.orm import scoped_session, sessionmaker
 import configparser
@@ -10,6 +10,7 @@ import class_spider
 import class_translator
 import class_SubscriptionSystem
 import class_DataManager
+import class_CaptchaService
 from class_datatypes import Result, UsersComments
 from datetime import datetime
 from sqlalchemy import create_engine, desc
@@ -21,7 +22,7 @@ class Backend:
         print("[Debug] Creating Backend")
         self.session = self.init_db(db_path)
         self.create_tables()
-        self.translator, self.spider, self.model, self.subsriptionsystem, self.datamanager = self.init_subsystems()
+        self.translator, self.spider, self.model, self.subsriptionsystem, self.datamanager, self.captchaservice = self.init_subsystems()
         self.run_subsystems()
         
     def init_db(self, db_path):
@@ -64,7 +65,11 @@ class Backend:
 
         # 初始化DataManager
         datamanager = class_DataManager.DataManager(self.session)
-        return translator, spider, model, subscriptionsystem, datamanager
+        
+        # 初始化CaptchaService
+        captchaservice = class_CaptchaService.CaptchaService()
+        
+        return translator, spider, model, subscriptionsystem, datamanager, captchaservice
     
     def run_subsystems(self):
         """启动子系统线程"""
@@ -107,9 +112,12 @@ class Backend:
         finally:
             db_session.close()
 
+
 # 创建 Flask 应用
 app = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True, origins=["http://10.129.199.88:1111"])
+app.secret_key = 'abcabc'  # 用于安全地保存 session 信息
+app.config['SESSION_TYPE'] = 'filesystem'  # 使用文件系统存储会话
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # 正确禁用 GPU
 
@@ -126,6 +134,7 @@ def subscribe():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# 向前端发送数据
 @app.route('/api/messages')
 def get_messages():
     # 接收前端参数，'all' 表示不过滤该条件
@@ -135,10 +144,10 @@ def get_messages():
     }
     order_by = request.args.get('orderBy', 'date_time')
     order_desc = request.args.get('orderDesc', 'true') in ['true', 'True', '1', True]    
-    
+    print("[Debug from Captcha] Captcha is now:", session.get('captcha', ''))
     print("filters:", filters)
-    print("order_by: ", order_by)
-    print("order_desc: ", order_desc)
+    print("order_by:", order_by)
+    print("order_desc:", order_desc)
     results = backend.datamanager.get_data(filters=filters, order_by=order_by, order_desc=order_desc)
     
     return jsonify([
@@ -153,11 +162,33 @@ def get_messages():
         } for result in results
     ])
     
+# 从前端接收数据
 @app.route('/api/send-message', methods=['POST'])
 def send_message():
-    message_content = request.json['content']
-    response = backend.process_message(message_content)
-    return jsonify(response)
+    print("[Debug from Captcha] Captcha is now:", session)
+    data = request.get_json()
+    user_captcha_response = data.get('captcha', '')
+    original_captcha = session.get('captcha', '')
+
+    print("User captcha:", user_captcha_response)
+    print("Original captcha:", session.get('captcha', 'Not Set'))
+    
+    if not user_captcha_response.lower() == original_captcha.lower():
+        return jsonify({"status": "error", "message": "CAPTCHA validation failed"}), 403
+
+    message_content = data.get('content')
+    backend.process_message(message_content)
+    # 处理消息发送逻辑...
+    return jsonify({"status": "success", "message": "Message sent successfully"})
+
+# 向前端发送验证码
+@app.route('/captcha')
+def captcha():
+    """返回一个验证码图像"""
+    captcha_image = backend.captchaservice.get_captcha()
+    print("[Debug from Captcha] Captcha is now:", session)
+    # 确保 captcha_image 是一个正确的 BytesIO 流
+    return send_file(captcha_image, mimetype='image/png')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', use_reloader=False, debug=True, port=2222)  

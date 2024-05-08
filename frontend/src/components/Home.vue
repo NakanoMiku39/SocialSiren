@@ -9,6 +9,7 @@
       </div>
     </header>
 
+    <!-- Filter section -->
     <div class="filter-section">
       <select v-model="filters.sourceType">
         <option value="all">All Sources</option>
@@ -32,24 +33,58 @@
     <main class="main-content">
       <h2>Latest Messages</h2>
       <ul>
-        <li v-for="message in messages" :key="message.id">
-          <p>Posted on: {{ message.date_time }}</p>
-          <p>{{ message.content }}</p>
-          <p>Disaster: {{ message.is_disaster ? 'Yes' : 'No' }} - Probability: {{ message.probability }}</p>
-          <p>Source: {{ message.source_type }} (ID: {{ message.source_id }})</p>
+        <li v-for="message in messages" :key="message.id" class="message">
+          <div class="message-content">
+            <p>Posted on: {{ message.date_time }}</p>
+            <p>{{ message.content }}</p>
+            <p>Disaster: {{ message.is_disaster ? 'Yes' : 'No' }} - Probability: {{ message.probability }}</p>
+            <p>Source: {{ message.source_type }} (ID: {{ message.source_id }})</p>
+          </div>
+          <div class="ratings">
+            <div class="rating-container">
+              <label v-tooltip="'Rate the authenticity of this message.'">Authenticity:</label>
+              <span v-if="message.hasVotedAuthenticity">
+                {{ formatAverage(message.authenticity_average) }} ({{ message.authenticity_raters || 0 }} votes)
+              </span>
+              <button 
+                v-if="!message.hasVotedAuthenticity"
+                v-for="score in [1, 2, 3, 4, 5]" 
+                :key="score"
+                class="rating-button"
+                @click="rateMessage(message.id, score, 'authenticity')"
+              >
+                {{ score }}
+              </button>
+            </div>
+            <div class="rating-container">
+              <label v-tooltip="'Rate the accuracy of this message.'">Accuracy:</label>
+              <span v-if="message.hasVotedAccuracy">
+                {{ formatAverage(message.accuracy_average) }} ({{ message.accuracy_raters || 0 }} votes)
+              </span>
+              <button 
+                v-if="!message.hasVotedAccuracy"
+                v-for="score in [1, 2, 3, 4, 5]" 
+                :key="score"
+                class="rating-button"
+                @click="rateMessage(message.id, score, 'accuracy')"
+              >
+                {{ score }}
+              </button>
+            </div>
+          </div>
         </li>
       </ul>
     </main>
-    
+
     <!-- Footer section -->
     <footer class="message-box">
-      <textarea v-model="messageContent" placeholder="Type your message here" class="input-style"></textarea>
+      <textarea v-model="messageContent" placeholder="Type your message here" class="message-input"></textarea>
       <div class="captcha-and-send">
-          <div class="captcha-wrapper">
-              <img :src="captchaSrc" alt="Captcha" @click="refreshCaptcha" class="captcha-image">
-              <input type="text" v-model="captchaInput" placeholder="Enter captcha here" class="captcha-input">
-          </div>
-          <button class="send-button" @click="sendMessage">Send</button>
+        <div class="captcha-wrapper">
+          <img :src="captchaSrc" alt="Captcha" @click="refreshCaptcha" class="captcha-image">
+          <input type="text" v-model="captchaInput" placeholder="Enter captcha" class="captcha-input">
+        </div>
+        <button class="send-button" @click="sendMessage">Send</button>
       </div>
     </footer>
   </div>
@@ -57,26 +92,30 @@
 
 <script>
 import axios from 'axios';
+import VTooltip from 'v-tooltip';
+const apiBase = 'http://10.129.199.88:2222'; 
 
 export default {
   name: 'Home',
+  directives: {
+    tooltip: VTooltip,
+  },
   data() {
     return {
       email: '',
-      messageContent: '', // 添加这行确保定义了 messageContent
-      messages: [],  // 确保这里定义了 messages，并初始化为空数组
+      messageContent: '',
+      messages: [],
       captchaInput: '',
-      captchaSrc: '/captcha',  // 初始验证码图片地址
+      captchaSrc: `${apiBase}/captcha`,
       filters: {
         isDisaster: 'true',
         sourceType: 'all'
       },
-      sortOrder: 'true'
+      sortOrder: 'true',
     };
   },
   created() {
     this.fetchMessages();
-    this.refreshCaptcha();
   },
   methods: {
     fetchMessages() {
@@ -85,22 +124,26 @@ export default {
         orderBy: 'date_time',
         orderDesc: this.sortOrder
       };
-      axios.get('http://10.129.199.88:2222/api/messages', { params })
+      axios.get(`${apiBase}/api/messages`, { params })
         .then(response => {
-          this.messages = response.data;
+          this.messages = response.data.map(msg => ({
+            ...msg,
+            hasVotedAuthenticity: false,
+            hasVotedAccuracy: false
+          }));
         })
         .catch(error => {
           console.error('Error fetching messages:', error);
         });
     },
     submitEmail() {
-      axios.post('http://10.129.199.88:2222/subscribe', { email: this.email })
-        .then(response => {
+      axios.post(`${apiBase}/subscribe`, { email: this.email })
+        .then(() => {
           alert('Subscription successful!');
           this.email = '';
         })
         .catch(error => {
-          console.error('There was an error!', error);
+          console.error('Error subscribing:', error);
           alert('Subscription failed.');
         });
     },
@@ -117,28 +160,55 @@ export default {
         content: this.messageContent,
         captcha: this.captchaInput
       };
-      // const message = { content: this.messageContent };
-      axios.post('http://10.129.199.88:2222/api/send-message', message, { withCredentials: true })
-        .then(response => {
+      axios.post(`${apiBase}/api/send-message`, message, { withCredentials: true })
+        .then(() => {
           alert('Message sent successfully!');
-          this.messageContent = '';  // 清空输入框
+          this.messageContent = '';
           this.captchaInput = '';
-          this.refreshCaptcha();  // 刷新验证码
+          this.refreshCaptcha();
         })
         .catch(error => {
           console.error('Error sending message:', error);
           alert('Failed to send message. Please check the captcha and try again.');
-          this.refreshCaptcha();  // 出错时刷新验证码
+          this.refreshCaptcha();
         });
     },
     refreshCaptcha() {
-      // 刷新验证码
-      this.captchaSrc = `http://10.129.199.88:2222/captcha?rand=${Math.random()}`;
+      this.captchaSrc = `${apiBase}/captcha?rand=${Math.random()}`;
+    },
+    rateMessage(messageId, score, type) {
+      axios.post(`${apiBase}/api/rate-message`, {
+        message_id: messageId,
+        rating: score,
+        type: type
+      }).then(response => {
+        if (response.data.status === 'success') {
+          const message = this.messages.find(m => m.id === messageId);
+          if (type === 'authenticity') {
+            message.authenticity_average = response.data.authenticity_average;
+            message.authenticity_raters = response.data.authenticity_count;
+            message.hasVotedAuthenticity = true;
+          } else if (type === 'accuracy') {
+            message.accuracy_average = response.data.accuracy_average;
+            message.accuracy_raters = response.data.accuracy_count;
+            message.hasVotedAccuracy = true;
+          }
+        } else {
+          alert('Error updating rating: ' + response.data.message);
+        }
+      }).catch(error => {
+        console.error('Error submitting rating:', error);
+      });
+    },
+    formatAverage(value) {
+      return value ? value.toFixed(2) : '0.00';
     }
   }
 }
 </script>
 
+### CSS 美化样式
+```css
 <style scoped>
 .container {
   display: flex;
@@ -204,31 +274,37 @@ export default {
   margin-bottom: 10px;
   padding: 15px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .message-box {
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
-  background-color: #2c3e50;
+  background-color: #ecf0f1;
+  padding: 10px;
+  box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
+}
+
+.message-input {
+  width: 100%;
+  padding: 15px;
+  border-radius: 5px;
+  border: 1px solid #aaa;
+  margin-bottom: 10px;
 }
 
 .captcha-and-send {
   display: flex;
   align-items: center;
-  justify-content: space-between; /* 确保验证码和发送按钮在页面宽度较宽时保持间隔 */
+  justify-content: space-between;
 }
 
 .captcha-wrapper {
   display: flex;
   align-items: center;
-  margin-right: 10px; /* 确保验证码和发送按钮之间有间隔 */
 }
 
 .captcha-image {
   cursor: pointer;
-  margin-right: 10px; /* 图片与输入框之间的间隔 */
+  margin-right: 10px;
   width: 120px;
   height: 40px;
 }
@@ -237,7 +313,7 @@ export default {
   padding: 10px;
   border: 1px solid #aaa;
   border-radius: 5px;
-  flex-grow: 1; /* 输入框填充剩余空间 */
+  flex-grow: 1;
 }
 
 .send-button {
@@ -257,28 +333,72 @@ export default {
   display: flex;
   justify-content: space-between;
   padding: 20px;
-  background-color: #f4f4f4; /* 轻灰色背景 */
-  border-radius: 8px; /* 轻微的圆角 */
-  margin: 10px 0; /* 增加一些外边距 */
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* 添加轻微的阴影效果 */
+  background-color: #f4f4f4;
+  border-radius: 8px;
+  margin: 10px 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .filter-section select, .filter-section button {
   padding: 10px;
   margin-right: 10px;
-  border: 1px solid #ccc; /* 给下拉菜单和按钮添加边框 */
-  border-radius: 5px; /* 轻微的圆角效果 */
+  border: 1px solid #ccc;
+  border-radius: 5px;
   background: white;
   cursor: pointer;
 }
 
 .filter-section button {
-  background-color: #007BFF; /* Bootstrap 主题蓝色 */
+  background-color: #007BFF;
   color: white;
 }
 
 .filter-section button:hover {
-  background-color: #0056b3; /* 鼠标悬停时更深的蓝色 */
+  background-color: #0056b3;
 }
 
+.message {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px;
+  border-bottom: 1px solid #ccc;
+}
+
+.message-content {
+  flex-grow: 1;
+}
+
+.ratings {
+  flex-basis: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rating-container {
+  position: relative;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.rating-button {
+  margin-right: 5px;
+  background-color: #e0e0e0;
+  border: none;
+  padding: 5px;
+  cursor: pointer;
+}
+
+.rating-button:hover {
+  background-color: #d0d0d0;
+}
+
+.rating-container:hover .rating-button {
+  display: inline-block;
+}
 </style>

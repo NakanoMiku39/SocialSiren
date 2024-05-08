@@ -123,6 +123,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # 正确禁用 GPU
 
 backend = Backend('data/forum.db')  # 假设数据库文件名为 example.db
 
+def calculate_average(total, count):
+    return total / count if count > 0 else None
 
 # 邮箱订阅服务
 @app.route('/subscribe', methods=['POST'])
@@ -149,7 +151,7 @@ def get_messages():
     print("order_by:", order_by)
     print("order_desc:", order_desc)
     results = backend.datamanager.get_data(filters=filters, order_by=order_by, order_desc=order_desc)
-    
+        
     return jsonify([
         {
             'id': result.id,
@@ -158,7 +160,11 @@ def get_messages():
             'probability': result.probability,
             'source_type': result.source_type,
             'source_id': result.source_id,
-            'date_time': result.date_time.isoformat() if result.date_time else None
+            'date_time': result.date_time.isoformat() if result.date_time else None,
+            'authenticity_average': calculate_average(result.authenticity_rating, result.authenticity_raters),
+            'accuracy_average': calculate_average(result.accuracy_rating, result.accuracy_raters),
+            'authenticity_count': result.authenticity_raters,
+            'accuracy_count': result.accuracy_raters
         } for result in results
     ])
     
@@ -189,6 +195,41 @@ def captcha():
     print("[Debug from Captcha] Captcha is now:", session)
     # 确保 captcha_image 是一个正确的 BytesIO 流
     return send_file(captcha_image, mimetype='image/png')
+
+@app.route('/api/rate-message', methods=['POST'])
+def rate_message():
+    data = request.get_json()
+    message_id = data.get('message_id')
+    rating = data.get('rating')
+    rating_type = data.get('type')
+
+    db_session = backend.session()
+    message = db_session.query(Result).get(message_id)
+
+    if not message:
+        return jsonify({'status': 'error', 'message': 'Message not found'}), 404
+
+    if rating_type == 'authenticity':
+        message.authenticity_rating += rating
+        message.authenticity_raters += 1
+    elif rating_type == 'accuracy':
+        message.accuracy_rating += rating
+        message.accuracy_raters += 1
+    else:
+        return jsonify({'status': 'error', 'message': 'Invalid rating type'}), 400
+
+    db_session.commit()
+
+    # 返回更新后的平均评分和总评分次数
+    return jsonify({
+        'status': 'success',
+        'message': 'Rating updated successfully.',
+        'authenticity_average': calculate_average(message.authenticity_rating, message.authenticity_raters),
+        'accuracy_average': calculate_average(message.accuracy_rating, message.accuracy_raters),
+        'authenticity_count': message.authenticity_raters,
+        'accuracy_count': message.accuracy_raters
+    })
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', use_reloader=False, debug=True, port=2222)  

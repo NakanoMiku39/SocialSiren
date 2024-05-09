@@ -1,15 +1,17 @@
 <template>
   <div class="container">
-    <!-- Header section -->
-    <header class="header">
+    <div v-if="!isLoggedIn" class="header pre-login-header">
       <h1 class="website-name">SocialSiren</h1>
-      <div class="email-input">
-        <input type="email" v-model="email" placeholder="Enter your email" class="input-style">
-        <button class="email-button" @click="submitEmail">Subscribe</button>
-      </div>
-    </header>
+      <router-link to="/auth" class="auth-link">Login or Register</router-link>
+    </div>
+    <div v-else>
+      <header class="header">
+        <h1 class="website-name">SocialSiren</h1>
+        <p>Welcome, user!</p>
+        <button @click="logout" class="logout-button">Logout</button>
+      </header>
+    </div>
 
-    <!-- Filter section -->
     <div class="filter-section">
       <select v-model="filters.sourceType">
         <option value="all">All Sources</option>
@@ -29,7 +31,6 @@
       <button @click="fetchMessages">Apply Filters</button>
     </div>
 
-    <!-- Main content section -->
     <main class="main-content">
       <h2>Latest Messages</h2>
       <ul>
@@ -46,13 +47,8 @@
               <span v-if="message.hasVotedAuthenticity">
                 {{ formatAverage(message.authenticity_average) }} ({{ message.authenticity_raters || 0 }} votes)
               </span>
-              <button 
-                v-if="!message.hasVotedAuthenticity"
-                v-for="score in [1, 2, 3, 4, 5]" 
-                :key="score"
-                class="rating-button"
-                @click="rateMessage(message.id, score, 'authenticity')"
-              >
+              <button v-if="!message.hasVotedAuthenticity" v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                class="rating-button" @click="rateMessage(message.id, score, 'authenticity')">
                 {{ score }}
               </button>
             </div>
@@ -61,13 +57,8 @@
               <span v-if="message.hasVotedAccuracy">
                 {{ formatAverage(message.accuracy_average) }} ({{ message.accuracy_raters || 0 }} votes)
               </span>
-              <button 
-                v-if="!message.hasVotedAccuracy"
-                v-for="score in [1, 2, 3, 4, 5]" 
-                :key="score"
-                class="rating-button"
-                @click="rateMessage(message.id, score, 'accuracy')"
-              >
+              <button v-if="!message.hasVotedAccuracy" v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                class="rating-button" @click="rateMessage(message.id, score, 'accuracy')">
                 {{ score }}
               </button>
             </div>
@@ -76,7 +67,6 @@
       </ul>
     </main>
 
-    <!-- Footer section -->
     <footer class="message-box">
       <textarea v-model="messageContent" placeholder="Type your message here" class="message-input"></textarea>
       <div class="captcha-and-send">
@@ -93,6 +83,7 @@
 <script>
 import axios from 'axios';
 import VTooltip from 'v-tooltip';
+import { mapActions, mapState } from 'vuex';
 const apiBase = 'http://10.129.199.88:2222'; 
 
 export default {
@@ -103,6 +94,7 @@ export default {
   data() {
     return {
       email: '',
+      password: '',
       messageContent: '',
       messages: [],
       captchaInput: '',
@@ -115,37 +107,69 @@ export default {
     };
   },
   created() {
+    const token = localStorage.getItem('jwt');
+    if (token) {
+      console.log('JWT:', token);  // 输出查看 JWT
+      // 执行已登录状态的相关操作
+    }
+    console.log("Component created, isLoggedIn:", this.isLoggedIn);
     this.fetchMessages();
   },
+  computed: {
+    ...mapState(['isLoggedIn'])
+  },
   methods: {
+    ...mapActions(['logout']), // 从 Vuex 引入 logout action
     fetchMessages() {
-      const params = {
-        ...this.filters,
-        orderBy: 'date_time',
-        orderDesc: this.sortOrder
-      };
-      axios.get(`${apiBase}/api/messages`, { params })
-        .then(response => {
-          this.messages = response.data.map(msg => ({
-            ...msg,
-            hasVotedAuthenticity: false,
-            hasVotedAccuracy: false
-          }));
-        })
-        .catch(error => {
-          console.error('Error fetching messages:', error);
-        });
+  const params = {
+    ...this.filters,
+    orderBy: 'date_time',
+    orderDesc: this.sortOrder
+  };
+  // 获取存储在 localStorage 中的 JWT
+      const token = localStorage.getItem('jwt');
+      axios.get(`${apiBase}/api/messages`, {
+        headers: {
+          'Authorization': `Bearer ${token}`  // 使用 Bearer 方式添加 JWT
+        },
+        params: params
+      })
+      .then(response => {
+        this.messages = response.data.map(msg => ({
+          ...msg,
+          hasVotedAuthenticity: false,
+          hasVotedAccuracy: false
+        }));
+      })
+      .catch(error => {
+        console.error('Error fetching messages:', error);
+        // 这里可以添加处理特定错误的逻辑，比如 token 过期
+        if (error.response && error.response.status === 401) {
+          // 处理未授权错误，比如重定向到登录页面或显示错误消息
+          alert("Session expired. Please login again.");
+          this.$router.push('/login');
+        }
+      });
     },
-    submitEmail() {
-      axios.post(`${apiBase}/subscribe`, { email: this.email })
-        .then(() => {
-          alert('Subscription successful!');
-          this.email = '';
-        })
-        .catch(error => {
-          console.error('Error subscribing:', error);
-          alert('Subscription failed.');
-        });
+    authenticate() {
+      axios.post(`${apiBase}/subscribe`, {
+        email: this.email,
+        password: this.password
+      })
+      .then(response => {
+        alert('Authentication successful!');
+        this.email = '';  // Optionally clear fields
+        this.password = '';
+      })
+      .catch(error => {
+        console.error('Authentication error:', error);
+        alert('Authentication failed. Please try again.');
+      });
+    },
+    handleLogout() {
+      this.logout().then(() => {
+        this.$router.push('/login'); // 在成功登出后重定向到登录页面
+      });
     },
     sendMessage() {
       if (!this.messageContent.trim()) {
@@ -207,8 +231,6 @@ export default {
 }
 </script>
 
-### CSS 美化样式
-```css
 <style scoped>
 .container {
   display: flex;
@@ -233,21 +255,39 @@ export default {
   font-size: 24px;
 }
 
-.email-input input, .email-input button {
-  padding: 10px;
-  font-size: 16px;
-  border: none;
-  border-radius: 5px;
+.pre-login-header {
+  background-color: #34495e;
+  color: #ecf0f1;
+  text-align: center;
+  padding: 40px 20px;
+  border-bottom: 2px solid #2c3e50;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-.email-input button {
-  background-color: #3498db;
-  color: white;
-  cursor: pointer;
-}
-
-.email-input button:hover {
+.auth-link {
+  display: inline-block;
+  margin-top: 20px;
   background-color: #2980b9;
+  color: #ecf0f1;
+  padding: 10px 20px;
+  border-radius: 5px;
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.auth-link:hover {
+  background-color: #3498db;
+}
+
+.logout-button {
+  padding: 10px 20px;
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background-color 0.3s ease
 }
 
 .main-content {

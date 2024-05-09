@@ -79,3 +79,4 @@ class Subscriber(Base):
     __tablename__ = 'subscribers'
     id = Column(Integer, primary_key=True, autoincrement=True)
     email = Column(String(255), unique=True, nullable=False)
+    password = Column(String, nullable=False)  # 新增密码字段

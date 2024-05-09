@@ -15,6 +15,7 @@ from class_datatypes import Result, UsersComments
 from datetime import datetime
 from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker, scoped_session
+from flask_jwt_extended import create_access_token, JWTManager
 import os
 
 class Backend:
@@ -22,7 +23,7 @@ class Backend:
         print("[Debug] Creating Backend")
         self.session = self.init_db(db_path)
         self.create_tables()
-        self.translator, self.spider, self.model, self.subsriptionsystem, self.datamanager, self.captchaservice = self.init_subsystems()
+        self.translator, self.spider, self.model, self.subscriptionsystem, self.datamanager, self.captchaservice = self.init_subsystems()
         self.run_subsystems()
         
     def init_db(self, db_path):
@@ -77,7 +78,7 @@ class Backend:
         translator_thread = threading.Thread(target=self.translator.run, daemon=True)
         spider_thread = threading.Thread(target=self.spider.run, daemon=True)
         model_thread = threading.Thread(target=self.model.run, daemon=True)
-        subscriptionsystem_thread = threading.Thread(target=self.subsriptionsystem.run, daemon=True)
+        subscriptionsystem_thread = threading.Thread(target=self.subscriptionsystem.run, daemon=True)
         translator_thread.start()
         spider_thread.start()
         model_thread.start()
@@ -116,8 +117,10 @@ class Backend:
 # 创建 Flask 应用
 app = Flask(__name__)
 CORS(app, supports_credentials=True, origins=["http://10.129.199.88:1111"])
-app.secret_key = 'abcabc'  # 用于安全地保存 session 信息
+jwt = JWTManager(app)
+app.secret_key = 'your_secret_key_here'  # 用于安全地保存 session 信息
 app.config['SESSION_TYPE'] = 'filesystem'  # 使用文件系统存储会话
+app.config['JWT_SECRET_KEY'] = 'your_secret_key_here'  # Change this!
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # 正确禁用 GPU
 
@@ -129,13 +132,29 @@ def calculate_average(total, count):
 # 邮箱订阅服务
 @app.route('/subscribe', methods=['POST'])
 def subscribe():
-    email = request.json['email']
+    email = request.json.get('email')
+    password = request.json.get('password')
+    # 假设 backend.subscriptionsystem.register_or_login 已正确实现并返回 (成功状态, 消息/用户信息)
     try:
-        backend.subsriptionsystem.add_subscriber(email)
-        return jsonify({"message": "Subscription successful"}), 200
+        user_exists, user_info = backend.subscriptionsystem.register_or_login(email, password)
+        if user_exists:
+            # 创建 JWT token
+            try:
+                access_token = create_access_token(identity=email)
+                return jsonify({
+                    "message": "Login successful",
+                    "access_token": access_token  # 发送 JWT 让前端可以使用它来维持会话状态
+                }), 200
+            except Exception as e:
+                print("Failed to create access token:", str(e))
+                return jsonify({"error": str(e)}), 500
+        else:
+            return jsonify({"error": "Invalid email or password"}), 400
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+        # 在开发和调试阶段，直接返回异常信息可以帮助快速定位问题
+        # 在生产环境中，应考虑安全性，避免返回敏感信息
+        return jsonify({"error": f"Internal Server Error: {str(e)}"}), 500    
+    
 # 向前端发送数据
 @app.route('/api/messages')
 def get_messages():

@@ -7,6 +7,13 @@
 
 <script>
 export default {
-  name: 'App'
+  name: 'App',
+  created() {
+  const jwt = localStorage.getItem('jwt');
+  if (jwt) {
+    this.$store.dispatch('login');  // 用户仍然登录
+  }
+}
+
 }
 </script>

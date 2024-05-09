@@ -8,6 +8,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from class_datatypes import Subscriber, Result
 import time
+from werkzeug.security import generate_password_hash, check_password_hash
 
 class SubscriptionSystem:
     def __init__(self, email_host, email_port, email_username, email_password, Session):
@@ -79,8 +80,15 @@ class SubscriptionSystem:
         finally:
             session.close()
             
+    def send_email(self, server, email, text):
+        """Attempt to send an email and handle exceptions locally."""
+        try:
+            server.sendmail(self.email_username, email, text)
+            print(f"[Debug] Email sent to {email}")
+        except Exception as e:
+            print(f"[Debug] Failed to send email to {email}: {e}")
+
     def send_emails(self, emails, message):
-        # 登录到SMTP服务器
         db_session = self.Session()
         unprocessed_results = db_session.query(Result).filter_by(is_disaster=True, processed=False).all()
         if not unprocessed_results:
@@ -88,37 +96,66 @@ class SubscriptionSystem:
             return
         
         server = smtplib.SMTP(self.email_host, self.email_port)
-        server.starttls()  # 启动TLS
+        server.starttls()  # Enable TLS
         server.login(self.email_username, self.email_password)
         
-        # 创建邮件内容
-        msg = MIMEMultipart()
-        msg['From'] = self.email_username
-        msg['Subject'] = 'Urgent Notification'
-        
-        # 发送邮件给每个订阅者
         try:
             with db_session.no_autoflush:
                 for result in unprocessed_results:
+                    msg = MIMEMultipart()
+                    msg['From'] = self.email_username
+                    msg['Subject'] = 'Urgent Notification'
                     body = f"Disaster Alert: {result.content} with probability {result.probability}"
                     msg.attach(MIMEText(body, 'plain'))
                     text = msg.as_string()
+
                     for email in emails:
                         msg['To'] = email
-                        server.sendmail(self.email_username, email, text)
-                        print(f"[Debug] Email sent to {email} regarding {result.id}")
-                    # 标记结果为已处理
-                    result.processed = True
+                        self.send_email(server, email, text)
+                    
+                    result.processed = True  # Mark as processed regardless of individual email success
                 db_session.commit()
         except Exception as e:
-            # 如果出现异常，进行回滚
-            print("[Debug] Email Sent failed")
+            print(f"[Debug] Exception during email sending: {e}")
             db_session.rollback()
         finally:
             db_session.close()
-            
-        # 断开SMTP服务器连接
-        server.quit()
+            server.quit()
+        
+    def register_or_login(self, email, password):
+        if self.state != 'Idle':
+            return False, 'System is busy with another operation'
+        self.state = 'RegisterOrLogin'
+        db_session = self.Session()
+
+        try:
+            subscriber = db_session.query(Subscriber).filter_by(email=email).first()
+            if subscriber:
+                # 用户存在，验证密码
+                if check_password_hash(subscriber.password, password):
+                    self.state = 'Idle'
+                    return True, 'Login successful'
+                else:
+                    self.state = 'Idle'
+                    return False, 'Invalid password'
+            else:
+                # 新用户，注册
+                hashed_password = generate_password_hash(password, method='sha256')
+                new_subscriber = Subscriber(email=email, password=hashed_password)
+                db_session.add(new_subscriber)
+                db_session.commit()
+                self.state = 'Idle'
+                return True, 'Registration successful'
+        except IntegrityError:
+            db_session.rollback()
+            self.state = 'Idle'
+            return False, 'Email already exists'
+        except Exception as e:
+            db_session.rollback()
+            print(f"Error in register_or_login: {str(e)}")  # 输出错误信息到日志
+            raise  # 将异常再次抛出，确保外层可以捕获
+        finally:
+            db_session.close()
             
     def run(self):
         while True:

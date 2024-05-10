@@ -1,5 +1,6 @@
 <template>
   <div class="container">
+    <div v-if="showToast" class="toast">{{ toastMessage }}</div>
     <div v-if="!isLoggedIn" class="header pre-login-header">
       <h1 class="website-name">SocialSiren</h1>
       <router-link to="/auth" class="auth-link">Login or Register</router-link>
@@ -40,6 +41,12 @@
             <p>{{ message.content }}</p>
             <p>Disaster: {{ message.is_disaster ? 'Yes' : 'No' }} - Probability: {{ message.probability }}</p>
             <p>Source: {{ message.source_type }} (ID: {{ message.source_id }})</p>
+            <button v-if="!message.hasVotedDelete" @click="deleteMessage(message.id)" class="delete-button">
+              Vote to Delete
+            </button>
+            <button v-else class="delete-button" disabled>
+              Vote Recorded
+            </button>
           </div>
           <div class="ratings">
             <div class="rating-container">
@@ -104,6 +111,10 @@ export default {
         sourceType: 'all'
       },
       sortOrder: 'true',
+      apiBase: 'http://10.129.199.88:2222',
+      toastMessage: '',
+      showToast: false,
+      toastTimeout: null,
     };
   },
   created() {
@@ -128,9 +139,9 @@ export default {
   };
   // 获取存储在 localStorage 中的 JWT
       const token = localStorage.getItem('jwt');
-      axios.get(`${apiBase}/api/messages`, {
+      axios.get(`${this.apiBase}/api/messages`, {
         headers: {
-          'Authorization': `Bearer ${token}`  // 使用 Bearer 方式添加 JWT
+          'Authorization': `Bearer ${token}`  // Using Bearer token for JWT
         },
         params: params
       })
@@ -138,16 +149,16 @@ export default {
         this.messages = response.data.map(msg => ({
           ...msg,
           hasVotedAuthenticity: false,
-          hasVotedAccuracy: false
+          hasVotedAccuracy: false,
+          hasVotedDelete: msg.hasVotedDelete || false  // Assuming backend sends this flag
         }));
       })
       .catch(error => {
         console.error('Error fetching messages:', error);
-        // 这里可以添加处理特定错误的逻辑，比如 token 过期
+        // Handle specific errors such as token expiration
         if (error.response && error.response.status === 401) {
-          // 处理未授权错误，比如重定向到登录页面或显示错误消息
-          alert("Session expired. Please login again.");
-          this.$router.push('/login');
+          this.displayToast("Session expired. Please login again.");
+          this.$router.push('/auth');
         }
       });
     },
@@ -157,27 +168,27 @@ export default {
         password: this.password
       })
       .then(response => {
-        alert('Authentication successful!');
+        this.displayToast('Authentication successful!');
         this.email = '';  // Optionally clear fields
         this.password = '';
       })
       .catch(error => {
         console.error('Authentication error:', error);
-        alert('Authentication failed. Please try again.');
+        this.displayToast('Authentication failed. Please try again.');
       });
     },
     handleLogout() {
       this.logout().then(() => {
-        this.$router.push('/login'); // 在成功登出后重定向到登录页面
+        this.$router.push('/auth'); // 在成功登出后重定向到登录页面
       });
     },
     sendMessage() {
       if (!this.messageContent.trim()) {
-        alert('Message cannot be empty!');
+        this.displayToast('Message cannot be empty!');
         return;
       }
       if (!this.captchaInput.trim()) {
-        alert('Captcha cannot be empty!');
+        this.displayToast('Captcha cannot be empty!');
         return;
       }
       const message = {
@@ -186,14 +197,14 @@ export default {
       };
       axios.post(`${apiBase}/api/send-message`, message, { withCredentials: true })
         .then(() => {
-          alert('Message sent successfully!');
+          this.displayToast('Message sent successfully!');
           this.messageContent = '';
           this.captchaInput = '';
           this.refreshCaptcha();
         })
         .catch(error => {
           console.error('Error sending message:', error);
-          alert('Failed to send message. Please check the captcha and try again.');
+          this.displayToast('Failed to send message. Please check the captcha and try again.');
           this.refreshCaptcha();
         });
     },
@@ -201,32 +212,92 @@ export default {
       this.captchaSrc = `${apiBase}/captcha?rand=${Math.random()}`;
     },
     rateMessage(messageId, score, type) {
-      axios.post(`${apiBase}/api/rate-message`, {
+      // Retrieve the JWT from local storage or other storage
+      const token = localStorage.getItem('jwt');
+      if (!token) {
+        this.displayToast("You are not logged in or your session has expired.");
+        this.$router.push('/auth');
+        return;
+      }
+
+      // Make the POST request with the JWT token in the headers
+      axios.post(`${this.apiBase}/api/rate-message`, {
         message_id: messageId,
         rating: score,
         type: type
+      }, {
+        headers: {
+          'Authorization': `Bearer ${token}`  // Include the JWT token here
+        }
       }).then(response => {
         if (response.data.status === 'success') {
+          // Find the message and update its authenticity/accuracy averages and raters count
           const message = this.messages.find(m => m.id === messageId);
-          if (type === 'authenticity') {
-            message.authenticity_average = response.data.authenticity_average;
-            message.authenticity_raters = response.data.authenticity_count;
-            message.hasVotedAuthenticity = true;
-          } else if (type === 'accuracy') {
-            message.accuracy_average = response.data.accuracy_average;
-            message.accuracy_raters = response.data.accuracy_count;
-            message.hasVotedAccuracy = true;
+          if (message) {
+            if (type === 'authenticity') {
+              message.authenticity_average = response.data.authenticity_average;
+              message.authenticity_raters = response.data.authenticity_count;
+              message.hasVotedAuthenticity = true;
+            } else if (type === 'accuracy') {
+              message.accuracy_average = response.data.accuracy_average;
+              message.accuracy_raters = response.data.accuracy_count;
+              message.hasVotedAccuracy = true;
+            }
           }
         } else {
-          alert('Error updating rating: ' + response.data.message);
+          this.displayToast('Error updating rating: ' + response.data.message);
         }
       }).catch(error => {
-        console.error('Error submitting rating:', error);
+        // Log and alert the error message
+        console.error('Error submitting rating:', error.response?.data || error.message);
+        this.displayToast('Failed to submit rating. Please try again later.');
       });
     },
     formatAverage(value) {
       return value ? value.toFixed(2) : '0.00';
-    }
+    },
+    deleteMessage(messageId) {
+      // Retrieve the JWT from local storage or your Vuex store
+      const token = localStorage.getItem('jwt');  // Assuming the token is stored in local storage
+
+      if (!token) {
+        this.displayToast("You are not logged in or your session has expired.");
+        this.$router.push('/auth');
+        return;
+      }
+
+      axios.post(`${this.apiBase}/api/delete-message`, { message_id: messageId, delete_vote: true }, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      .then(response => {
+        if (response.data.status === 'success') {
+          this.displayToast('Message deleted successfully');
+          this.fetchMessages(); // Refresh the list of messages
+        } else if (response.data.status === 'pending') {
+          this.displayToast('Vote recorded. Pending more votes.');
+          const message = this.messages.find(m => m.id === messageId);
+          if (message) {
+            message.hasVotedDelete = true; // Mark as voted to disable further voting
+          }
+        } else {
+          this.displayToast('Error: ' + response.data.message);
+        }
+      })
+      .catch(error => {
+        console.error('Deletion failed:', error.response.data);
+        this.displayToast('Failed to delete message: ' + error.response.data.message);
+      });
+    },
+    displayToast(message, duration = 3000) {
+      this.toastMessage = message;
+      this.showToast = true;
+      clearTimeout(this.toastTimeout);
+      this.toastTimeout = setTimeout(() => {
+        this.showToast = false;
+      }, duration);
+    },
   }
 }
 </script>
@@ -440,5 +511,42 @@ label {
 
 .rating-container:hover .rating-button {
   display: inline-block;
+}
+
+.delete-button {
+  padding: 5px 10px;
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.delete-button:hover {
+  background-color: #c0392b;
+}
+
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0,0,0,0.7);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 5px;
+  z-index: 1000;
+  animation: fadein 0.5s, fadeout 0.5s 2.5s;
+}
+
+@keyframes fadein {
+  from { top: 0; opacity: 0; }
+  to { top: 20px; opacity: 1; }
+}
+
+@keyframes fadeout {
+  from { top: 20px; opacity: 1; }
+  to { top: 0; opacity: 0; }
 }
 </style>

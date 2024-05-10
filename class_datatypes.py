@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, Text, ForeignKey, String, Boolean, Float, DateTime
-from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
+from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base, relationship, backref
 from sqlalchemy.ext.hybrid import hybrid_property
 
 Base = declarative_base()
@@ -61,6 +61,9 @@ class Result(Base):
     accuracy_rating = Column(Float, default=0.0)
     authenticity_raters = Column(Integer, default=0)
     accuracy_raters = Column(Integer, default=0)    
+    delete_votes = Column(Integer, default=0)  # Track votes for deletion
+    # Explicit relationship without using backref
+    votes = relationship('Vote', back_populates='result')
     processed = Column(Boolean, default=False)
         
     @hybrid_property
@@ -80,3 +83,26 @@ class Subscriber(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     email = Column(String(255), unique=True, nullable=False)
     password = Column(String, nullable=False)  # 新增密码字段
+    votes = relationship('Vote', back_populates='subscriber')    
+    
+class Vote(Base):
+    __tablename__ = 'votes'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('subscribers.id'), nullable=False)
+    message_id = Column(Integer, ForeignKey('results.id'), nullable=False)
+    vote_type = Column(String(50))  # Can be 'delete', 'upvote', etc., depending on your needs
+
+    subscriber = relationship('Subscriber', back_populates='votes')
+    result = relationship('Result', back_populates='votes')
+    
+class Rating(Base):
+    __tablename__ = 'ratings'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('subscribers.id'), nullable=False)
+    message_id = Column(Integer, ForeignKey('results.id'), nullable=False)
+    type = Column(String(50))  # 'authenticity' or 'accuracy'
+    rating = Column(Float)
+
+    # Relationships with backrefs
+    user = relationship('Subscriber', backref=backref('ratings', cascade='all, delete-orphan'))
+    message = relationship('Result', backref=backref('ratings', cascade='all, delete-orphan'))

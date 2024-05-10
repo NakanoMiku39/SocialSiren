@@ -11,11 +11,11 @@ import class_translator
 import class_SubscriptionSystem
 import class_DataManager
 import class_CaptchaService
-from class_datatypes import Result, UsersComments
+from class_datatypes import Result, UsersComments, Vote, Rating
 from datetime import datetime
 from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker, scoped_session
-from flask_jwt_extended import create_access_token, JWTManager
+from flask_jwt_extended import create_access_token, JWTManager, jwt_required, get_jwt_identity
 import os
 
 class Backend:
@@ -216,7 +216,12 @@ def captcha():
     return send_file(captcha_image, mimetype='image/png')
 
 @app.route('/api/rate-message', methods=['POST'])
+@jwt_required()  # Ensure the user is authenticated
 def rate_message():
+    user_id = get_jwt_identity()  # Assuming JWT authentication is used
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+
     data = request.get_json()
     message_id = data.get('message_id')
     rating = data.get('rating')
@@ -224,9 +229,15 @@ def rate_message():
 
     db_session = backend.session()
     message = db_session.query(Result).get(message_id)
-
     if not message:
         return jsonify({'status': 'error', 'message': 'Message not found'}), 404
+
+    existing_rating = db_session.query(Rating).filter_by(user_id=user_id, message_id=message_id, type=rating_type).first()
+    if existing_rating:
+        return jsonify({'status': 'error', 'message': 'You have already rated this message'}), 400
+
+    new_rating = Rating(user_id=user_id, message_id=message_id, type=rating_type, rating=rating)
+    db_session.add(new_rating)
 
     if rating_type == 'authenticity':
         message.authenticity_rating += rating
@@ -239,7 +250,6 @@ def rate_message():
 
     db_session.commit()
 
-    # 返回更新后的平均评分和总评分次数
     return jsonify({
         'status': 'success',
         'message': 'Rating updated successfully.',
@@ -248,7 +258,43 @@ def rate_message():
         'authenticity_count': message.authenticity_raters,
         'accuracy_count': message.accuracy_raters
     })
+    
+@app.route('/api/delete-message', methods=['POST'])
+@jwt_required()  # Ensure the user is authenticated
+def delete_message():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    print("Received data:", data)
+    message_id = data.get('message_id')
 
+    db_session = backend.session()
+    message = db_session.query(Result).get(message_id)
+    print("message:", message, "message_id:", message_id)
+
+    if not message:
+        return jsonify({'status': 'error', 'message': 'Message not found'}), 404
+
+    # Check if the user has already voted for this message
+    existing_vote = db_session.query(Vote).filter_by(user_id=user_id, message_id=message_id, vote_type='delete').one_or_none()
+
+    if existing_vote:
+        return jsonify({'status': 'error', 'message': 'You have already voted to delete this message'}), 409
+
+    # Increment the delete votes count
+    message.delete_votes += 1
+
+    # Record the new vote
+    new_vote = Vote(user_id=user_id, message_id=message_id, vote_type='delete')
+    db_session.add(new_vote)
+
+    # Check if the vote threshold is met to delete the message
+    if message.delete_votes >= 10:  # Example threshold
+        db_session.delete(message)
+        db_session.commit()
+        return jsonify({'status': 'success', 'message': 'Message deleted successfully'}), 200
+
+    db_session.commit()
+    return jsonify({'status': 'pending', 'message': 'Vote recorded. Pending more votes.'}), 202
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', use_reloader=False, debug=True, port=2222)  

@@ -1,5 +1,6 @@
 <template>
   <div class="auth-container">
+    <div v-if="showToast" class="toast">{{ toastMessage }}</div>
     <h1 class="auth-heading">Sign Up or Log In</h1>
     <form @submit.prevent="authenticate" class="auth-form">
       <input v-model="email" type="email" placeholder="Email" required class="auth-input">
@@ -20,7 +21,9 @@ export default {
   data() {
     return {
       email: '',
-      password: ''
+      password: '',
+      toastMessage: '',  // 存储toast消息的文本
+      showToast: false,  // 控制toast显示的布尔值
     };
   },
   methods: {
@@ -33,19 +36,26 @@ export default {
         if (response.data.access_token) {
           localStorage.setItem('jwt', response.data.access_token);  // 保存 JWT
           this.$store.dispatch('login');  // 更新 Vuex 状态
-          alert('Authentication successful!');
+          this.displayToast('Authentication successful!');
           this.$router.push('/');  // 重定向到主页
         } else {
-          alert('Login failed: ' + response.data.message);
+          this.displayToast('Login failed: ' + response.data.message);
         }
       }).catch(error => {
         console.error('Authentication error:', error);
-        alert('Authentication failed. Please try again.');
+        this.displayToast('Authentication failed. Please try again.');
       });
     },
     logout() {
       localStorage.removeItem('jwt');  // 移除 JWT
       this.$store.dispatch('logout');  // 更新 Vuex 状态
+    },
+    displayToast(message) {
+      this.toastMessage = message;
+      this.showToast = true;
+      setTimeout(() => {
+        this.showToast = false;
+      }, 3000);  // 消息显示3秒后消失
     }
   }
 }
@@ -112,5 +122,25 @@ export default {
 
 .back-button:hover {
   background-color: #c0392b;
+}
+
+.toast {
+  position: fixed;
+  top: 20px; 
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  background-color: #333;
+  color: white;
+  border-radius: 5px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  text-align: center;
+  z-index: 1000;
+  animation: fadeinout 3s;
+}
+
+@keyframes fadeinout {
+  0%, 100% { opacity: 0; }
+  10%, 90% { opacity: 1; }
 }
 </style>

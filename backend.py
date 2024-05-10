@@ -132,29 +132,38 @@ def calculate_average(total, count):
 # 邮箱订阅服务
 @app.route('/subscribe', methods=['POST'])
 def subscribe():
-    email = request.json.get('email')
-    password = request.json.get('password')
-    # 假设 backend.subscriptionsystem.register_or_login 已正确实现并返回 (成功状态, 消息/用户信息)
-    try:
-        user_exists, user_info = backend.subscriptionsystem.register_or_login(email, password)
-        if user_exists:
+    print("[Debug from Captcha] Captcha is now:", session)
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    user_captcha_response = data.get('captcha', '')
+    original_captcha = session.get('captcha', '')
+
+    print("User captcha:", user_captcha_response)
+    print("Original captcha:", session.get('captcha', 'Not Set'))
+
+    # 检查验证码
+    if not user_captcha_response.lower() == original_captcha.lower():
+        return jsonify({"status": "error", "message": "CAPTCHA validation failed"}), 403
+
+    # 清除session中的验证码，确保每个验证码只使用一次
+    session.pop('captcha', None)
+
+    # 进行用户登录或注册逻辑
+    user_exists, user_info = backend.subscriptionsystem.register_or_login(email, password)
+    if user_exists:
+        try:
             # 创建 JWT token
-            try:
-                access_token = create_access_token(identity=email)
-                return jsonify({
-                    "message": "Login successful",
-                    "access_token": access_token  # 发送 JWT 让前端可以使用它来维持会话状态
-                }), 200
-            except Exception as e:
-                print("Failed to create access token:", str(e))
-                return jsonify({"error": str(e)}), 500
-        else:
-            return jsonify({"error": "Invalid email or password"}), 400
-    except Exception as e:
-        # 在开发和调试阶段，直接返回异常信息可以帮助快速定位问题
-        # 在生产环境中，应考虑安全性，避免返回敏感信息
-        return jsonify({"error": f"Internal Server Error: {str(e)}"}), 500    
-    
+            access_token = create_access_token(identity=email)
+            return jsonify({
+                "message": "Login successful",
+                "access_token": access_token
+            }), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    else:
+        return jsonify({"error": "Invalid email or password"}), 400   
+     
 # 向前端发送数据
 @app.route('/api/messages')
 def get_messages():

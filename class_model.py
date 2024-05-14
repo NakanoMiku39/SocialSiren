@@ -1,29 +1,28 @@
-import time
-from sqlalchemy.orm import scoped_session, sessionmaker
-from sqlalchemy import create_engine
 import pandas as pd
 import tensorflow as tf
-import keras_nlp
-from sklearn.model_selection import train_test_split
+import joblib
+from transformers import DistilBertTokenizer, TFDistilBertForSequenceClassification
+from sklearn.preprocessing import LabelEncoder
 from class_datatypes import Topics, Replies, UsersComments, TranslatedTopics, TranslatedReplies, TranslatedUsersComments, Result
-from transformers import BertTokenizer
+import time
 
 class DisasterTweetModel:
-    def __init__(self, train_path, test_path, Session, preset='distil_bert_base_en_uncased', sequence_length=160):
+    def __init__(self, train_path, test_path, Session, model_path='model/distilbert_disaster_model', sequence_length=128):
         """
         Initialize the model, its preprocessor, load datasets, and setup database connection.
         """
         self.train_path = train_path
         self.test_path = test_path
         self.Session = Session
-        self.preset = preset
+        self.model_path = model_path
         self.sequence_length = sequence_length
-        self.preprocessor = keras_nlp.models.DistilBertPreprocessor.from_preset(
-            self.preset, sequence_length=self.sequence_length)        
-        self.model = tf.keras.models.load_model('model/disaster_tweet_model.keras')
+        self.tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+        self.model = TFDistilBertForSequenceClassification.from_pretrained(self.model_path)
+        self.label_encoder = joblib.load('model/keyword_encoder.pkl')  # Assume encoder is saved here
         self.df_train = pd.read_csv(train_path)
         self.df_test = pd.read_csv(test_path)
         print("[Debug] Model initialized")
+        print(self.label_encoder.classes_)
 
     def __del__(self):
         """
@@ -49,15 +48,17 @@ class DisasterTweetModel:
                     for trans_topic in untranslated_topics:
                         original_topic = db_session.query(Topics).filter(Topics.id == trans_topic.id).first()  # Assuming there is a reference to the original topic
                         if original_topic:
-                            predictions = self.model.predict([trans_topic.content])
+                            encoded_text = self.encode_texts([trans_topic.content])
+                            predictions = self.model.predict(encoded_text)
                             results = self.interpret_predictions(predictions, [trans_topic.content])
-                            for _, label, probability in results:
+                            for _, label, probability, disaster_type in results:
                                 new_result = Result(
                                     source_id=original_topic.id,
                                     content=original_topic.content,  # Use original content
                                     date_time=trans_topic.date_time,
                                     is_disaster=label,
                                     probability=probability,
+                                    disaster_type=disaster_type,
                                     source_type='topic'
                                 )
                                 db_session.add(new_result)
@@ -67,15 +68,17 @@ class DisasterTweetModel:
                     for trans_reply in untranslated_replies:
                         original_reply = db_session.query(Replies).filter(Replies.id == trans_reply.id).first()  # Assuming there is a reference to the original reply
                         if original_reply:
-                            predictions = self.model.predict([trans_reply.content])
+                            encoded_text = self.encode_texts([trans_reply.content])
+                            predictions = self.model.predict(encoded_text)
                             results = self.interpret_predictions(predictions, [trans_reply.content])
-                            for _, label, probability in results:
+                            for _, label, probability, disaster_type in results:
                                 new_result = Result(
                                     source_id=original_reply.id,
                                     content=original_reply.content,  # Use original content
                                     date_time=trans_reply.date_time,
                                     is_disaster=label,
                                     probability=probability,
+                                    disaster_type=disaster_type,
                                     source_type='reply'
                                 )
                                 db_session.add(new_result)
@@ -85,15 +88,17 @@ class DisasterTweetModel:
                     for trans_comment in untranslated_comments:
                         original_comment = db_session.query(UsersComments).filter(UsersComments.id == trans_comment.id).first()  # Assuming there is a reference to the original reply
                         if original_comment:
-                            predictions = self.model.predict([trans_comment.content])
+                            encoded_text = self.encode_texts([trans_comment.content])
+                            predictions = self.model.predict(encoded_text)
                             results = self.interpret_predictions(predictions, [trans_comment.content])
-                            for _, label, probability in results:
+                            for _, label, probability, disaster_type in results:
                                 new_result = Result(
                                     source_id=original_comment.id,
                                     content=original_comment.content,  # Use original content
                                     date_time=trans_comment.date_time,
                                     is_disaster=label,
                                     probability=probability,
+                                    disaster_type=disaster_type,
                                     source_type='comment'
                                 )
                                 db_session.add(new_result)
@@ -112,20 +117,33 @@ class DisasterTweetModel:
     def interpret_predictions(self, predictions, items):
         """
         Interpret model predictions to human-readable format.
-        Returns a list of tuples with each containing the text, prediction label, and probability.
+        If an index is out of bounds, assume the tweet is not a disaster.
         """
-        probabilities = tf.nn.softmax(predictions, axis=1)
+        DISASTER_THRESHOLD = 0.8  # Define a probability threshold for disaster
+        probabilities = tf.nn.softmax(predictions.logits, axis=1)
         predicted_indices = tf.argmax(probabilities, axis=1)
-        labels = ["Not a Disaster", "Disaster"]
-        
+        predicted_labels = self.label_encoder.inverse_transform(predicted_indices.numpy())
+
         results = []
-        for text, index in zip(items, predicted_indices):
-            label = bool(index)  # 将index转换为布尔值，假设'class 1'为灾害
-            probability = probabilities[:, index][0]  # Get the probability for the predicted class
-            results.append((text, label, float(probability)))
-            
+        for i, (text, predicted_label) in enumerate(zip(items, predicted_labels)):
+            # Ensure the index is within the valid range of probabilities
+            if predicted_indices[i] < probabilities.shape[1]:
+                probability = probabilities[i, predicted_indices[i]].numpy()
+                is_disaster = 1 if probability > DISASTER_THRESHOLD else 0
+                results.append((text, is_disaster, float(probability), predicted_label))
+            else:
+                # Handle out of bounds by assuming not a disaster
+                print(f"[Warning] Index {predicted_indices[i]} out of bounds for probabilities with shape {probabilities.shape}. Assuming not a disaster.")
+                results.append((text, 0, 0.0, "Not a Disaster"))  # Assume not a disaster in case of out-of-bounds
+
         return results
 
+    def encode_texts(self, texts):
+        """
+        Encode texts for prediction.
+        """
+        return [self.tokenizer.encode(text, add_special_tokens=True, max_length=self.sequence_length, truncation=True, padding='max_length') for text in texts]
+    
     def run(self):
         """
         Start the continuous prediction process.

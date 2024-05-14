@@ -54,6 +54,7 @@ class Result(Base):
     content = Column(Text)
     date_time = Column(DateTime)
     is_disaster = Column(Boolean)  # 是否为灾害
+    disaster_type = Column(String)
     probability = Column(Float)    # 灾害的概率
     source_type = Column(String(50))  # 来源类型：'topic' 或 'reply'
     source_id = Column(Integer)       # 原始话题或回复的ID

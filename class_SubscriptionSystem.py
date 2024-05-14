@@ -105,7 +105,7 @@ class SubscriptionSystem:
                     msg = MIMEMultipart()
                     msg['From'] = self.email_username
                     msg['Subject'] = 'Urgent Notification'
-                    body = f"Disaster Alert: {result.content} with probability {result.probability}"
+                    body = f"Disaster Alert: {result.content} \n Disaster Type: {result.disaster_type} \n probability {result.probability}"
                     msg.attach(MIMEText(body, 'plain'))
                     text = msg.as_string()
 

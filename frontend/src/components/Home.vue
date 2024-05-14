@@ -39,7 +39,9 @@
           <div class="message-content">
             <p>Posted on: {{ message.date_time }}</p>
             <p>{{ message.content }}</p>
-            <p>Disaster: {{ message.is_disaster ? 'Yes' : 'No' }} - Probability: {{ message.probability }}</p>
+            <p>Disaster: {{ message.is_disaster ? 'Yes' : 'No' }}
+              <span v-if="message.is_disaster">- Probability: {{ message.probability }} <p>Disaster Type: {{ message.disaster_type }}</p></span>
+            </p>
             <p>Source: {{ message.source_type }} (ID: {{ message.source_id }})</p>
             <button v-if="!message.hasVotedDelete" @click="deleteMessage(message.id)" class="delete-button">
               Vote to Delete

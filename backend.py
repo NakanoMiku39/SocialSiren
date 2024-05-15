@@ -1,4 +1,5 @@
 import threading
+from multiprocessing import Process
 from flask import Flask, jsonify, request, send_file, session
 from flask_cors import CORS
 from sqlalchemy.orm import scoped_session, sessionmaker
@@ -7,6 +8,7 @@ from selenium.webdriver.chrome.options import Options
 import class_datatypes
 import class_model
 import class_spider
+import class_GDACSspider
 import class_translator
 import class_SubscriptionSystem
 import class_DataManager
@@ -17,13 +19,31 @@ from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker, scoped_session
 from flask_jwt_extended import create_access_token, JWTManager, jwt_required, get_jwt_identity
 import os
+import time
 
 class Backend:
     def __init__(self, db_path):
         print("[Debug] Creating Backend")
         self.session = self.init_db(db_path)
         self.create_tables()
-        self.translator, self.spider, self.model, self.subscriptionsystem, self.datamanager, self.captchaservice = self.init_subsystems()
+        self.translator, self.model, self.subscriptionsystem, self.datamanager, self.captchaservice = self.init_subsystems()
+        self.spider_event = threading.Event()
+        self.gdacs_event = threading.Event()
+        self.options = Options()
+        # options.add_argument("--headless")  # 设置为无头模式
+        self.options.add_argument('--disable-gpu')
+        self.options.add_argument("--no-sandbox") 
+        self.options.add_argument('--disable-dev-shm-usage')
+        self.options.add_argument(r"user-data-dir=/home/nakanomiku/.config/google-chrome")
+        self.options.add_experimental_option("prefs", {
+            "download.default_directory": '/home/nakanomiku/Downloads/',
+            "download.prompt_for_download": False,
+            "download.directory_upgrade": True,
+            "safebrowsing.enabled": True
+        })
+
+
+        # self.schedule_tasks()
         self.run_subsystems()
         
     def init_db(self, db_path):
@@ -40,21 +60,10 @@ class Backend:
         """初始化 Translator 和 Spider 子系统"""
         print("Initializing subsystems")
         # 读取配置文件
-        config = configparser.ConfigParser()
-        config.read('config.ini')
 
         # 初始化 Translator
         translator = class_translator.Translator("nllb-200-distilled-600M", self.session)
 
-        # 初始化 Spider
-        options = Options()
-        # options.add_argument("--headless")  # 设置为无头模式
-        options.add_argument('--disable-gpu')
-        options.add_argument("--no-sandbox") 
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument(r"user-data-dir=/home/nakanomiku/.config/google-chrome")
-        url = "https://treehole.pku.edu.cn/web/"
-        spider = class_spider.Spider(config, url, self.session, options)
         
         # 初始化 DisasterTweetModel
         train_path = 'dataset/train.csv'
@@ -62,7 +71,9 @@ class Backend:
         model = class_model.DisasterTweetModel(train_path, test_path, self.session)
         
         # 初始化SubscriptionSystem
-        subscriptionsystem = class_SubscriptionSystem.SubscriptionSystem('220.197.30.134', 25, config['User']['email'], config['User']['password'], self.session)
+        config = configparser.ConfigParser()
+        config.read('config.ini')
+        subscriptionsystem = class_SubscriptionSystem.SubscriptionSystem('220.197.30.134', 25,  config['User']['email'], config['User']['password'],  self.session)
 
         # 初始化DataManager
         datamanager = class_DataManager.DataManager(self.session)
@@ -70,19 +81,51 @@ class Backend:
         # 初始化CaptchaService
         captchaservice = class_CaptchaService.CaptchaService()
         
-        return translator, spider, model, subscriptionsystem, datamanager, captchaservice
-    
+        return translator, model, subscriptionsystem, datamanager, captchaservice
+
+    def spider_task(self):
+        while True:
+            self.spider_event.wait()
+            # 初始化 Spider
+            config = configparser.ConfigParser()
+            config.read('config.ini')
+            spider = class_spider.Spider(config, self.session, self.options)
+            print("Spider is running...")
+            spider.run()  # 假设 Spider 有一个 run 方法
+            # time.sleep(60)  # 运行一定时间后停止
+            print("Spider is stopping...")
+            spider.stop()  # 假设 Spider 有一个 stop 方法
+            self.spider_event.clear()
+            self.gdacs_event.set()
+
+    def gdacs_task(self):
+        while True:
+            self.gdacs_event.wait()
+            print("GDACS is running...")
+            gdacsspider = class_GDACSspider.GDACSSpider("/home/nakanomiku/Downloads/", "./data", self.session, self.options)
+            gdacsspider.run()  # 假设 GDACS 有一个 run 方法
+            # time.sleep(60)  # 运行一定时间后停止
+            print("GDACS is stopping...")
+            gdacsspider.stop()  # 假设 GDACS 有一个 stop 方法
+            self.gdacs_event.clear()
+            self.spider_event.set()
+            
     def run_subsystems(self):
         """启动子系统线程"""
         print("[Debug] Waking up subsystems")
         translator_thread = threading.Thread(target=self.translator.run, daemon=True)
-        spider_thread = threading.Thread(target=self.spider.run, daemon=True)
+        # spider_thread = threading.Thread(target=self.spider.run, daemon=True)
+        # gdacsspider_thread = threading.Thread(target=self.gdacs.run, daemon=True)
         model_thread = threading.Thread(target=self.model.run, daemon=True)
         subscriptionsystem_thread = threading.Thread(target=self.subscriptionsystem.run, daemon=True)
         translator_thread.start()
-        spider_thread.start()
+        # spider_thread.start()
+        # gdacsspider_thread.start()
         model_thread.start()
         subscriptionsystem_thread.start()
+        threading.Thread(target=self.spider_task).start()
+        threading.Thread(target=self.gdacs_task).start()
+        self.spider_event.set()
 
     def get_all_results(self):
         """从数据库中获取所有结果记录"""
@@ -194,6 +237,26 @@ def get_messages():
             'accuracy_average': calculate_average(result.accuracy_rating, result.accuracy_raters),
             'authenticity_count': result.authenticity_raters,
             'accuracy_count': result.accuracy_raters
+        } for result in results
+    ])
+
+@app.route('/api/gdacsMessages')
+def get_gdacs_messages():
+    filters = {
+        'source_type': request.args.get('sourceType', 'GDACS')  # Default to 'GDACS'
+    }
+    order_by = request.args.get('orderBy', 'date_time')
+    order_desc = request.args.get('orderDesc', 'true') in ['true', 'True', '1', True]
+
+    results = backend.datamanager.get_data_gdacs(order_by=order_by, order_desc=order_desc)
+
+    return jsonify([
+        {
+            'id': result.id,
+            'content': result.content,
+            'date_time': result.date_time.isoformat() if result.date_time else None,
+            'source_type': result.source_type,
+            'location': result.location
         } for result in results
     ])
     

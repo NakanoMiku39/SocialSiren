@@ -4,6 +4,15 @@ from sqlalchemy.ext.hybrid import hybrid_property
 
 Base = declarative_base()
 
+class GDACS(Base):
+    __tablename__ = 'gdacs'
+    id = Column(Integer, primary_key=True)
+    content = Column(Text)
+    date_time = Column(DateTime)
+    source_type = Column(String(50), default='GDACS')
+    location = Column(Text)
+    processed = Column(Boolean, default=False)
+
 class Topics(Base):
     __tablename__ = 'topics'
     id = Column(Integer, primary_key=True)

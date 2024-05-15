@@ -1,4 +1,4 @@
-from class_datatypes import Result
+from class_datatypes import Result, GDACS
 from sqlalchemy import desc, asc, Boolean
 
 class DataManager:
@@ -27,5 +27,21 @@ class DataManager:
         except Exception as e:
             print(f"Error during processing: {e}")
             print("[Debug] Model write failed")
+        finally:
+            db_session.close()
+
+    def get_data_gdacs(self, order_by=None, order_desc=True):
+        db_session = self.Session()
+        try:
+            query = db_session.query(GDACS)
+            # Apply sorting if the attribute exists in GDACS
+            if order_by and hasattr(GDACS, order_by):
+                order_function = desc if order_desc else asc
+                query = query.order_by(order_function(getattr(GDACS, order_by)))
+
+            return query.all()
+        except Exception as e:
+            print(f"Error during processing: {e}")
+            return []
         finally:
             db_session.close()

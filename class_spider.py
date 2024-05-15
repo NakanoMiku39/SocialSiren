@@ -13,16 +13,17 @@ import random
 import re
 from class_datatypes import Topics, Replies
 from datetime import datetime
+import configparser
 
 class Spider:
-    def __init__(self, config, url, Session, options) -> None:
+    def __init__(self, config, Session, options) -> None:
         self.username = config['User']['username'] # 学号
         self.password = config['User']['password'] # 密码
         self.entries = config['User']['entries'] # 希望爬取的树洞数
         self.mode = config['User']['mode'] # 爬虫运行模式
         self.timeout = config['User']['timeout'] # 树洞刷新间隔
         self.google = webdriver.Chrome(options=options)
-        self.url = url
+        self.url = "https://treehole.pku.edu.cn/web/"
         self.Session = Session
         print("[Debug] Spider initialized")
         
@@ -57,15 +58,15 @@ class Spider:
 
     def realtime(self):      
         try:  
-            while True:
-                time.sleep(int(self.timeout))
-                refresh = self.google.find_element(By.CSS_SELECTOR, "span.icon.icon-refresh") 
-                refresh.click()
-                self.google.find_element(By.XPATH, "//div[contains(@class,'title-bar')]").click()
-                time.sleep(random.randint(3,5))
-                flow_items = self.google.find_elements(By.XPATH, "//div[contains(@class,'flow-item-row flow-item-row-with-prompt')]")
-                self.crawlFlowItems(flow_items)
-                print("New entries add: %d" % len(flow_items))
+            # while True:
+            time.sleep(int(self.timeout))
+            refresh = self.google.find_element(By.CSS_SELECTOR, "span.icon.icon-refresh") 
+            refresh.click()
+            self.google.find_element(By.XPATH, "//div[contains(@class,'title-bar')]").click()
+            time.sleep(random.randint(3,5))
+            flow_items = self.google.find_elements(By.XPATH, "//div[contains(@class,'flow-item-row flow-item-row-with-prompt')]")
+            self.crawlFlowItems(flow_items)
+            print("New entries add: %d" % len(flow_items))
                 
         except KeyboardInterrupt:
             self.__del__()
@@ -134,9 +135,13 @@ class Spider:
         self.login()
         time.sleep(10)
         self.realtime()
-        
+       
+    def stop(self):
+        """资源清理"""
+        self.google.quit()
+        print("Quitted") 
+    
     def __del__(self):
         """资源清理"""
-        self.Session.remove()  # 关闭 session
         self.google.quit()
         print("Quitted")

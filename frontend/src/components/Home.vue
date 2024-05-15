@@ -33,49 +33,65 @@
     </div>
 
     <main class="main-content">
-      <h2>Latest Messages</h2>
-      <ul>
-        <li v-for="message in messages" :key="message.id" class="message">
-          <div class="message-content">
-            <p>Posted on: {{ message.date_time }}</p>
-            <p>{{ message.content }}</p>
-            <p>Disaster: {{ message.is_disaster ? 'Yes' : 'No' }}
-              <span v-if="message.is_disaster">- Probability: {{ message.probability }} <p>Disaster Type: {{ message.disaster_type }}</p></span>
-            </p>
-            <p>Source: {{ message.source_type }} (ID: {{ message.source_id }})</p>
-            <button v-if="!message.hasVotedDelete" @click="deleteMessage(message.id)" class="delete-button">
-              Vote to Delete
-            </button>
-            <button v-else class="delete-button" disabled>
-              Vote Recorded
-            </button>
-          </div>
-          <div class="ratings">
-            <div class="rating-container">
-              <label v-tooltip="'Rate the authenticity of this message.'">Authenticity:</label>
-              <span v-if="message.hasVotedAuthenticity">
-                {{ formatAverage(message.authenticity_average) }} ({{ message.authenticity_raters || 0 }} votes)
-              </span>
-              <button v-if="!message.hasVotedAuthenticity" v-for="score in [1, 2, 3, 4, 5]" :key="score"
-                class="rating-button" @click="rateMessage(message.id, score, 'authenticity')">
-                {{ score }}
+      <div class="left-panel">
+        <h2>Latest Messages</h2>
+        <ul>
+          <li v-for="message in messages" :key="message.id" class="message">
+            <div class="message-content">
+              <p>Posted on: {{ message.date_time }}</p>
+              <p>{{ message.content }}</p>
+              <p>Disaster: {{ message.is_disaster ? 'Yes' : 'No' }}
+                <span v-if="message.is_disaster">- Probability: {{ message.probability }} <p>Disaster Type: {{ message.disaster_type }}</p></span>
+              </p>
+              <p>Source: {{ message.source_type }} (ID: {{ message.source_id }})</p>
+              <button v-if="!message.hasVotedDelete" @click="deleteMessage(message.id)" class="delete-button">
+                Vote to Delete
+              </button>
+              <button v-else class="delete-button" disabled>
+                Vote Recorded
               </button>
             </div>
-            <div class="rating-container">
-              <label v-tooltip="'Rate the accuracy of this message.'">Accuracy:</label>
-              <span v-if="message.hasVotedAccuracy">
-                {{ formatAverage(message.accuracy_average) }} ({{ message.accuracy_raters || 0 }} votes)
-              </span>
-              <button v-if="!message.hasVotedAccuracy" v-for="score in [1, 2, 3, 4, 5]" :key="score"
-                class="rating-button" @click="rateMessage(message.id, score, 'accuracy')">
-                {{ score }}
-              </button>
+            <div class="ratings">
+              <div class="rating-container">
+                <label v-tooltip="'Rate the authenticity of this message.'">Authenticity:</label>
+                <span v-if="message.hasVotedAuthenticity">
+                  {{ formatAverage(message.authenticity_average) }} ({{ message.authenticity_raters || 0 }} votes)
+                </span>
+                <button v-if="!message.hasVotedAuthenticity" v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                  class="rating-button" @click="rateMessage(message.id, score, 'authenticity')">
+                  {{ score }}
+                </button>
+              </div>
+              <div class="rating-container">
+                <label v-tooltip="'Rate the accuracy of this message.'">Accuracy:</label>
+                <span v-if="message.hasVotedAccuracy">
+                  {{ formatAverage(message.accuracy_average) }} ({{ message.accuracy_raters || 0 }} votes)
+                </span>
+                <button v-if="!message.hasVotedAccuracy" v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                  class="rating-button" @click="rateMessage(message.id, score, 'accuracy')">
+                  {{ score }}
+                </button>
+              </div>
             </div>
-          </div>
-        </li>
-      </ul>
+          </li>
+        </ul>
+      </div>
+      <div class="right-panel">
+        <!-- 右侧面板内容 -->
+        <h2>GDACS Alerts</h2>
+        <ul>
+          <li v-for="message in gdacsMessages" :key="message.id" class="message">
+            <div class="message-content">
+              <p>Posted on: {{ message.date_time }}</p>
+              <p>{{ message.content }}</p>
+              <p>Source: {{ message.source_type }}</p>
+              <p>Location: {{ message.location }}</p>
+            </div>
+          </li>
+        </ul>
+      </div>
     </main>
-
+      
     <footer class="message-box">
       <textarea v-model="messageContent" placeholder="Type your message here" class="message-input"></textarea>
       <div class="captcha-and-send">
@@ -106,6 +122,7 @@ export default {
       password: '',
       messageContent: '',
       messages: [],
+      gdacsMessages: [], // 新增数组用于存储右侧的消息数据
       captchaInput: '',
       captchaSrc: `${apiBase}/captcha`,
       filters: {
@@ -127,6 +144,7 @@ export default {
     }
     console.log("Component created, isLoggedIn:", this.isLoggedIn);
     this.fetchMessages();
+    this.fetchGdacsMessages(); // 调用方法获取右侧的消息数据
   },
   computed: {
     ...mapState(['isLoggedIn'])
@@ -162,6 +180,21 @@ export default {
           this.displayToast("Session expired. Please login again.");
           this.$router.push('/auth');
         }
+      });
+    },
+    fetchGdacsMessages() { // 新方法用于获取右侧消息数据
+      axios.get(`${this.apiBase}/api/gdacsMessages`, {
+        params: {
+          orderBy: 'date_time', // example of ordering by date
+          orderDesc: true
+        }
+      })
+      .then(response => {
+        this.gdacsMessages = response.data;
+      })
+      .catch(error => {
+        console.error('Error fetching GDACS messages:', error);
+        this.displayToast('Failed to fetch GDACS messages.');
       });
     },
     authenticate() {
@@ -364,12 +397,31 @@ export default {
 }
 
 .main-content {
-  flex: 1;
+  display: flex;
   padding: 20px;
   background-color: #f9f9f9;
   border-top: 1px solid #ccc;
-  overflow-y: auto;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.left-panel, .right-panel {
+  flex: 1;
+  overflow-y: auto;  /* 允许滚动 */
+  margin: 0 10px;
+  padding: 10px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  height: 500px; /* 或其他固定高度，取决于页面设计 */
+}
+
+.right-panel {
+  background-color: #eef;  /* 轻微背景色差异 */
+}
+
+.message {
+  background: #fff;
+  margin-bottom: 10px;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .main-content h2 {

@@ -5,6 +5,7 @@ from transformers import DistilBertTokenizer, TFDistilBertForSequenceClassificat
 from sklearn.preprocessing import LabelEncoder
 from class_datatypes import Topics, Replies, UsersComments, TranslatedTopics, TranslatedReplies, TranslatedUsersComments, Result
 import time
+from sqlalchemy.exc import SQLAlchemyError
 
 class DisasterTweetModel:
     def __init__(self, train_path, test_path, Session, model_path='model/distilbert_disaster_model', sequence_length=128):
@@ -19,6 +20,7 @@ class DisasterTweetModel:
         self.tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
         self.model = TFDistilBertForSequenceClassification.from_pretrained(self.model_path)
         self.label_encoder = joblib.load('model/keyword_encoder.pkl')  # Assume encoder is saved here
+        # self.label_encoder.classes_ = [label.replace('%20', ' ') for label in self.label_encoder.classes_]
         self.df_train = pd.read_csv(train_path)
         self.df_test = pd.read_csv(test_path)
         print("[Debug] Model initialized")
@@ -30,119 +32,101 @@ class DisasterTweetModel:
         """
         self.Session.remove()  # 关闭 session
 
-    def predict_and_save(self):
-        """
-        Continuously predict and save results from new translated topics and replies,
-        but use the content from the original Topics and Replies for saving in the results.
-        """
-        db_session = self.Session()
-        try:
-            while True:
-                print("[Debug] Model tries to write to database")
-                untranslated_topics = db_session.query(TranslatedTopics).filter(TranslatedTopics.processed == False).all()
-                untranslated_replies = db_session.query(TranslatedReplies).filter(TranslatedReplies.processed == False).all()
-                untranslated_comments = db_session.query(TranslatedUsersComments).filter(TranslatedUsersComments.processed == False).all()
-
-                with db_session.no_autoflush:
-                    # Process topics
-                    for trans_topic in untranslated_topics:
-                        original_topic = db_session.query(Topics).filter(Topics.id == trans_topic.id).first()  # Assuming there is a reference to the original topic
-                        if original_topic:
-                            encoded_text = self.encode_texts([trans_topic.content])
-                            predictions = self.model.predict(encoded_text)
-                            results = self.interpret_predictions(predictions, [trans_topic.content])
-                            for _, label, probability, disaster_type in results:
-                                new_result = Result(
-                                    source_id=original_topic.id,
-                                    content=original_topic.content,  # Use original content
-                                    date_time=trans_topic.date_time,
-                                    is_disaster=label,
-                                    probability=probability,
-                                    disaster_type=disaster_type,
-                                    source_type='topic'
-                                )
-                                db_session.add(new_result)
-                                trans_topic.processed = True
-
-                    # Process replies
-                    for trans_reply in untranslated_replies:
-                        original_reply = db_session.query(Replies).filter(Replies.id == trans_reply.id).first()  # Assuming there is a reference to the original reply
-                        if original_reply:
-                            encoded_text = self.encode_texts([trans_reply.content])
-                            predictions = self.model.predict(encoded_text)
-                            results = self.interpret_predictions(predictions, [trans_reply.content])
-                            for _, label, probability, disaster_type in results:
-                                new_result = Result(
-                                    source_id=original_reply.id,
-                                    content=original_reply.content,  # Use original content
-                                    date_time=trans_reply.date_time,
-                                    is_disaster=label,
-                                    probability=probability,
-                                    disaster_type=disaster_type,
-                                    source_type='reply'
-                                )
-                                db_session.add(new_result)
-                                trans_reply.processed = True    
-                                
-                    # Process comments
-                    for trans_comment in untranslated_comments:
-                        original_comment = db_session.query(UsersComments).filter(UsersComments.id == trans_comment.id).first()  # Assuming there is a reference to the original reply
-                        if original_comment:
-                            encoded_text = self.encode_texts([trans_comment.content])
-                            predictions = self.model.predict(encoded_text)
-                            results = self.interpret_predictions(predictions, [trans_comment.content])
-                            for _, label, probability, disaster_type in results:
-                                new_result = Result(
-                                    source_id=original_comment.id,
-                                    content=original_comment.content,  # Use original content
-                                    date_time=trans_comment.date_time,
-                                    is_disaster=label,
-                                    probability=probability,
-                                    disaster_type=disaster_type,
-                                    source_type='comment'
-                                )
-                                db_session.add(new_result)
-                                trans_comment.processed = True    
-
-                db_session.commit()  # Commit all changes
-                print("[Debug] Model write successful")
-                time.sleep(10)  # Wait before checking for more unprocessed entries
-        except Exception as e:
-            db_session.rollback()
-            print(f"Error during processing: {e}")
-            print("[Debug] Model write failed")
-        finally:
-            db_session.close()
-            
-    def interpret_predictions(self, predictions, items):
-        """
-        Interpret model predictions to human-readable format.
-        If an index is out of bounds, assume the tweet is not a disaster.
-        """
-        DISASTER_THRESHOLD = 0.8  # Define a probability threshold for disaster
-        probabilities = tf.nn.softmax(predictions.logits, axis=1)
-        predicted_indices = tf.argmax(probabilities, axis=1)
-        predicted_labels = self.label_encoder.inverse_transform(predicted_indices.numpy())
-
-        results = []
-        for i, (text, predicted_label) in enumerate(zip(items, predicted_labels)):
-            # Ensure the index is within the valid range of probabilities
-            if predicted_indices[i] < probabilities.shape[1]:
-                probability = probabilities[i, predicted_indices[i]].numpy()
-                is_disaster = 1 if probability > DISASTER_THRESHOLD else 0
-                results.append((text, is_disaster, float(probability), predicted_label))
-            else:
-                # Handle out of bounds by assuming not a disaster
-                print(f"[Warning] Index {predicted_indices[i]} out of bounds for probabilities with shape {probabilities.shape}. Assuming not a disaster.")
-                results.append((text, 0, 0.0, "Not a Disaster"))  # Assume not a disaster in case of out-of-bounds
-
-        return results
-
     def encode_texts(self, texts):
         """
         Encode texts for prediction.
         """
         return [self.tokenizer.encode(text, add_special_tokens=True, max_length=self.sequence_length, truncation=True, padding='max_length') for text in texts]
+
+    def interpret_predictions(self, predictions, items):
+        results = []
+        try:
+            probabilities = tf.nn.softmax(predictions.logits, axis=1)
+            predicted_indices = tf.argmax(probabilities, axis=1).numpy()
+
+            # Debugging output to check index validity before decoding
+            print(f"[Debug] Label encoder classes count: {len(self.label_encoder.classes_)}")
+
+            for i, (text, predicted_index) in enumerate(zip(items, predicted_indices)):
+                print(f"[Debug] Text={text}, Predicted Index={predicted_index}")
+
+                if predicted_index >= len(self.label_encoder.classes_):
+                    print(f"[Error] Predicted index {predicted_index} is out of bounds for label encoder classes.")
+                    results.append((text, 0, 0.0, "Not a Disaster"))
+                    continue
+
+                probability = probabilities[i, predicted_index].numpy()
+                is_disaster = 1 if probability > 0.8 else 0
+                predicted_label = self.label_encoder.inverse_transform([predicted_index])[0]
+                results.append((text, is_disaster, float(probability), predicted_label))
+                
+                print(f"[Debug] Processed: Label={predicted_label}, Probability={probability}")
+
+        except Exception as e:
+            print(f"[Exception] Error during interpretation: {str(e)}")
+            for text in items[len(results):]:
+                results.append((text, 0, 0.0, "Not a Disaster"))
+
+        return results
+    
+    def process_and_save_results(self, db_session, items, source_type):
+        """
+        Process and save results from predictions, convert %20 to space in labels before saving.
+        """
+        for item in items:
+            original = db_session.query(source_type).filter(source_type.id == item.id).first()
+            if original:
+                try:
+                    encoded_text = self.encode_texts([item.content])
+                    predictions = self.model.predict(encoded_text)
+                    results = self.interpret_predictions(predictions, [item.content])
+                    for _, label, probability, disaster_type in results:
+                        # Convert %20 to space in the disaster_type label before saving
+                        disaster_type = disaster_type.replace('%20', ' ')
+                        new_result = Result(
+                            source_id=original.id,
+                            content=original.content,  # Use original content
+                            date_time=item.date_time,
+                            is_disaster=label,
+                            probability=probability,
+                            disaster_type=disaster_type,  # Saved with converted label
+                            source_type=source_type.__tablename__
+                        )
+                        db_session.add(new_result)
+                        item.processed = True
+                        print(f"Processed {source_type.__tablename__} {original.id}")
+                except Exception as e:
+                    print(f"Failed processing {source_type.__tablename__} {original.id}: {str(e)}")
+    
+    def predict_and_save(self):
+        """
+        Continuously predict and save results from new translated topics and replies.
+        """
+        db_session = self.Session()
+        try:
+            while True:
+                print("[Debug] Checking for new data to process...")
+                untranslated_topics = db_session.query(TranslatedTopics).filter(TranslatedTopics.processed == False).all()
+                untranslated_replies = db_session.query(TranslatedReplies).filter(TranslatedReplies.processed == False).all()
+                untranslated_comments = db_session.query(TranslatedUsersComments).filter(TranslatedUsersComments.processed == False).all()
+
+                with db_session.no_autoflush:
+                    self.process_and_save_results(db_session, untranslated_topics, Topics)
+                    self.process_and_save_results(db_session, untranslated_replies, Replies)
+                    self.process_and_save_results(db_session, untranslated_comments, UsersComments)
+
+                db_session.commit()
+                print("[Debug] Model write successful, sleeping for 10 seconds...")
+                time.sleep(10)
+        except SQLAlchemyError as db_err:
+            db_session.rollback()
+            print(f"Database error during processing: {db_err}")
+        except Exception as e:
+            db_session.rollback()
+            print(f"Error during processing: {e}")
+        finally:
+            db_session.close()
+            print("[Debug] Database session closed.")
     
     def run(self):
         """

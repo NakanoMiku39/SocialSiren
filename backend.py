@@ -13,6 +13,7 @@ import class_translator
 import class_SubscriptionSystem
 import class_DataManager
 import class_CaptchaService
+import class_ChatGPT
 from class_datatypes import Result, UsersComments, Vote, Rating
 from datetime import datetime
 from sqlalchemy import create_engine, desc
@@ -60,19 +61,19 @@ class Backend:
         """初始化 Translator 和 Spider 子系统"""
         print("Initializing subsystems")
         # 读取配置文件
-
+        config = configparser.ConfigParser()
+        config.read('config.ini')
         # 初始化 Translator
         translator = class_translator.Translator("nllb-200-distilled-600M", self.session)
 
         
         # 初始化 DisasterTweetModel
-        train_path = 'dataset/train.csv'
-        test_path = 'dataset/test.csv'
-        model = class_model.DisasterTweetModel(train_path, test_path, self.session)
-        
+        # train_path = 'dataset/train.csv'
+        # test_path = 'dataset/test.csv'
+        # model = class_model.DisasterTweetModel(train_path, test_path, self.session)
+        model = class_ChatGPT.LangChainModel(self.session, config['GPT']['apikey'])
+
         # 初始化SubscriptionSystem
-        config = configparser.ConfigParser()
-        config.read('config.ini')
         subscriptionsystem = class_SubscriptionSystem.SubscriptionSystem('220.197.30.134', 25,  config['User']['email'], config['User']['password'],  self.session)
 
         # 初始化DataManager

@@ -14,9 +14,9 @@ import class_SubscriptionSystem
 import class_DataManager
 import class_CaptchaService
 import class_ChatGPT
-from class_datatypes import Result, UsersComments, Vote, Rating
+from class_datatypes import Warning, Result, UsersComments, Vote, Rating
 from datetime import datetime
-from sqlalchemy import create_engine, desc
+from sqlalchemy import create_engine, desc, asc
 from sqlalchemy.orm import sessionmaker, scoped_session
 from flask_jwt_extended import create_access_token, JWTManager, jwt_required, get_jwt_identity
 import os
@@ -207,40 +207,70 @@ def subscribe():
             return jsonify({"error": str(e)}), 500
     else:
         return jsonify({"error": "Invalid email or password"}), 400   
-     
-# 向前端发送数据
-@app.route('/api/messages')
-def get_messages():
-    # 接收前端参数，'all' 表示不过滤该条件
+    
+@app.route('/api/warnings', methods=['GET'])
+def get_warnings():
     filters = {
-        'source_type': None if request.args.get('sourceType') == 'all' else request.args.get('sourceType'),
-        'is_disaster': None if request.args.get('isDisaster') == 'all' else request.args.get('isDisaster') in ['true', 'True', '1', True] if request.args.get('isDisaster') is not None else None
+        'disaster_type': None if request.args.get('disasterType') == 'all' else request.args.get('disasterType'),
+        'disaster_location': None if request.args.get('disasterLocation') == 'all' else request.args.get('disasterLocation')
     }
-    order_by = request.args.get('orderBy', 'date_time')
-    order_desc = request.args.get('orderDesc', 'true') in ['true', 'True', '1', True]    
-    print("[Debug from Captcha] Captcha is now:", session.get('captcha', ''))
-    print("filters:", filters)
-    print("order_by:", order_by)
-    print("order_desc:", order_desc)
-    results = backend.datamanager.get_data(filters=filters, order_by=order_by, order_desc=order_desc)
-        
-    return jsonify([
-        {
-            'id': result.id,
-            'content': result.content,
-            'is_disaster': result.is_disaster,
-            'disaster_type': result.disaster_type,
-            'probability': result.probability,
-            'source_type': result.source_type,
-            'source_id': result.source_id,
-            'date_time': result.date_time.isoformat() if result.date_time else None,
-            'authenticity_average': calculate_average(result.authenticity_rating, result.authenticity_raters),
-            'accuracy_average': calculate_average(result.accuracy_rating, result.accuracy_raters),
-            'authenticity_count': result.authenticity_raters,
-            'accuracy_count': result.accuracy_raters
-        } for result in results
-    ])
+    order_by = request.args.get('orderBy', 'disaster_time')
+    order_desc = request.args.get('orderDesc', 'true') in ['true', 'True', '1', True]
+    
+    print(f"[Debug] Filters: {filters}")
+    print(f"[Debug] Order by: {order_by}, Order desc: {order_desc}")
+    
+    try:
+        db_session = backend.session()
+        query = db_session.query(Warning)
 
+        if filters['disaster_type']:
+            print(f"[Debug] Filtering by disaster_type: {filters['disaster_type']}")
+            query = query.filter(Warning.disaster_type == filters['disaster_type'])
+        if filters['disaster_location']:
+            print(f"[Debug] Filtering by disaster_location: {filters['disaster_location']}")
+            query = query.filter(Warning.disaster_location == filters['disaster_location'])
+        
+        if order_by and hasattr(Warning, order_by):
+            print(f"[Debug] Ordering by: {order_by}")
+            order_function = desc if order_desc else asc
+            query = query.order_by(order_function(getattr(Warning, order_by)))
+        else:
+            print(f"[Debug] Invalid order_by attribute: {order_by}")
+
+        warnings = query.all()
+        result = []
+        for warning in warnings:
+            related_results = db_session.query(Result).filter(Result.warning_id == warning.id).all()
+            result.append({
+                'id': warning.id,
+                'disaster_type': warning.disaster_type,
+                'disaster_time': warning.disaster_time,
+                'disaster_location': warning.disaster_location,
+                'related_tweets': [{
+                    'id': r.id,
+                    'content': r.content,
+                    'is_disaster': r.is_disaster,
+                    'disaster_type': r.disaster_type,
+                    'probability': r.probability,
+                    'source_type': r.source_type,
+                    'source_id': r.source_id,
+                    'date_time': r.date_time.isoformat() if r.date_time else None,
+                    'authenticity_average': calculate_average(r.authenticity_rating, r.authenticity_raters),
+                    'accuracy_average': calculate_average(r.accuracy_rating, r.accuracy_raters),
+                    'authenticity_count': r.authenticity_raters,
+                    'accuracy_count': r.accuracy_raters,
+                    'hasVotedAuthenticity': False,  # Default to False, update with actual logic if needed
+                    'hasVotedAccuracy': False,      # Default to False, update with actual logic if needed
+                    'hasVotedDelete': r.delete_votes > 0  # Assume backend sends this flag
+                } for r in related_results]
+            })
+        print(f"[Debug] Warnings retrieved: {len(result)}")
+        return jsonify(result)
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return jsonify({"status": "error", "message": "Failed to retrieve warnings"}), 500
+    
 @app.route('/api/gdacsMessages')
 def get_gdacs_messages():
     filters = {

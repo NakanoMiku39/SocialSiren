@@ -70,12 +70,12 @@ class Result(Base):
     authenticity_rating = Column(Float, default=0.0)
     accuracy_rating = Column(Float, default=0.0)
     authenticity_raters = Column(Integer, default=0)
-    accuracy_raters = Column(Integer, default=0)    
+    accuracy_raters = Column(Integer, default=0)
     delete_votes = Column(Integer, default=0)  # Track votes for deletion
-    # Explicit relationship without using backref
     votes = relationship('Vote', back_populates='result')
     processed = Column(Boolean, default=False)
-        
+    warning_id = Column(Integer, ForeignKey('warnings.id'))
+
     @hybrid_property
     def authenticity_average(self):
         if self.authenticity_raters > 0:
@@ -87,7 +87,17 @@ class Result(Base):
         if self.accuracy_raters > 0:
             return self.accuracy_rating / self.accuracy_raters
         return 0
-    
+
+class Warning(Base):
+    __tablename__ = 'warnings'
+    id = Column(Integer, primary_key=True)
+    disaster_type = Column(String)
+    disaster_time = Column(String)  # 考虑时间字段的实际需求
+    disaster_location = Column(String)
+    results = relationship('Result', back_populates='warning')
+
+Result.warning = relationship('Warning', back_populates='results')
+
 class Subscriber(Base):
     __tablename__ = 'subscribers'
     id = Column(Integer, primary_key=True, autoincrement=True)

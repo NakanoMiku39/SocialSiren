@@ -14,70 +14,39 @@
     </div>
 
     <div class="filter-section">
-      <select v-model="filters.sourceType">
-        <option value="all">All Sources</option>
-        <option value="topic">Topic</option>
-        <option value="reply">Reply</option>
-        <option value="comment">User Comment</option>
+      <select v-model="filters.disasterType">
+        <option value="all">All Types</option>
+        <option value="earthquake">Earthquake</option>
+        <option value="flood">Flood</option>
+        <!-- 添加更多灾害类型 -->
       </select>
-      <select v-model="filters.isDisaster">
-        <option value="all">Both</option>
-        <option value="true">Disaster</option>
-        <option value="false">Not Disaster</option>
+      <select v-model="filters.disasterLocation">
+        <option value="all">All Locations</option>
+        <option value="city1">City 1</option>
+        <option value="city2">City 2</option>
+        <!-- 添加更多灾害地点 -->
       </select>
       <select v-model="sortOrder">
         <option value="true">Newest First</option>
         <option value="false">Oldest First</option>
       </select>
-      <button @click="fetchMessages">Apply Filters</button>
+      <button @click="fetchWarnings">Apply Filters</button>
     </div>
 
     <main class="main-content">
       <div class="left-panel">
-        <h2>Latest Messages</h2>
+        <h2>Latest Warnings</h2>
         <ul>
-          <li v-for="message in messages" :key="message.id" class="message">
-            <div class="message-content">
-              <p>Posted on: {{ message.date_time }}</p>
-              <p>{{ message.content }}</p>
-              <p>Disaster: {{ message.is_disaster ? 'Yes' : 'No' }}
-                <span v-if="message.is_disaster">- Probability: {{ message.probability }} <p>Disaster Type: {{ message.disaster_type }}</p></span>
-              </p>
-              <p>Source: {{ message.source_type }} (ID: {{ message.source_id }})</p>
-              <button v-if="!message.hasVotedDelete" @click="deleteMessage(message.id)" class="delete-button">
-                Vote to Delete
-              </button>
-              <button v-else class="delete-button" disabled>
-                Vote Recorded
-              </button>
-            </div>
-            <div class="ratings">
-              <div class="rating-container">
-                <label v-tooltip="'Rate the authenticity of this message.'">Authenticity:</label>
-                <span v-if="message.hasVotedAuthenticity">
-                  {{ formatAverage(message.authenticity_average) }} ({{ message.authenticity_raters || 0 }} votes)
-                </span>
-                <button v-if="!message.hasVotedAuthenticity" v-for="score in [1, 2, 3, 4, 5]" :key="score"
-                  class="rating-button" @click="rateMessage(message.id, score, 'authenticity')">
-                  {{ score }}
-                </button>
-              </div>
-              <div class="rating-container">
-                <label v-tooltip="'Rate the accuracy of this message.'">Accuracy:</label>
-                <span v-if="message.hasVotedAccuracy">
-                  {{ formatAverage(message.accuracy_average) }} ({{ message.accuracy_raters || 0 }} votes)
-                </span>
-                <button v-if="!message.hasVotedAccuracy" v-for="score in [1, 2, 3, 4, 5]" :key="score"
-                  class="rating-button" @click="rateMessage(message.id, score, 'accuracy')">
-                  {{ score }}
-                </button>
-              </div>
+          <li v-for="warning in warnings" :key="warning.id" class="warning">
+            <div class="warning-content" @click="selectWarning(warning)">
+              <p>Disaster Type: {{ warning.disaster_type }}</p>
+              <p>Time: {{ warning.disaster_time }}</p>
+              <p>Location: {{ warning.disaster_location }}</p>
             </div>
           </li>
         </ul>
       </div>
       <div class="right-panel">
-        <!-- 右侧面板内容 -->
         <h2>GDACS Alerts</h2>
         <ul>
           <li v-for="message in gdacsMessages" :key="message.id" class="message">
@@ -91,7 +60,57 @@
         </ul>
       </div>
     </main>
-      
+
+    <div v-if="selectedWarning" class="modal" @click.self="selectedWarning = null">
+      <div class="modal-content">
+        <h3>Warning Details</h3>
+        <p>Disaster Type: {{ selectedWarning.disaster_type }}</p>
+        <p>Time: {{ selectedWarning.disaster_time }}</p>
+        <p>Location: {{ selectedWarning.disaster_location }}</p>
+        <h4>Related Tweets</h4>
+        <ul>
+          <li v-for="tweet in selectedWarning.related_tweets" :key="tweet.id" class="tweet">
+            <div class="tweet-content">
+              <p>Posted on: {{ tweet.date_time }}</p>
+              <p>{{ tweet.content }}</p>
+              <p>Disaster: {{ tweet.is_disaster ? 'Yes' : 'No' }}
+                <span v-if="tweet.is_disaster">- Probability: {{ tweet.probability }} <p>Disaster Type: {{ tweet.disaster_type }}</p></span>
+              </p>
+              <p>Source: {{ tweet.source_type }} (ID: {{ tweet.source_id }})</p>
+              <button v-if="!tweet.hasVotedDelete" @click="deleteMessage(tweet.id)" class="delete-button">
+                Vote to Delete
+              </button>
+              <button v-else class="delete-button" disabled>
+                Vote Recorded
+              </button>
+            </div>
+            <div class="ratings">
+              <div class="rating-container">
+                <label v-tooltip="'Rate the authenticity of this message.'">Authenticity:</label>
+                <span v-if="tweet.hasVotedAuthenticity">
+                  {{ formatAverage(tweet.authenticity_average) }} ({{ tweet.authenticity_count || 0 }} votes)
+                </span>
+                <button v-if="!tweet.hasVotedAuthenticity" v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                  class="rating-button" @click="rateMessage(tweet.id, score, 'authenticity')">
+                  {{ score }}
+                </button>
+              </div>
+              <div class="rating-container">
+                <label v-tooltip="'Rate the accuracy of this message.'">Accuracy:</label>
+                <span v-if="tweet.hasVotedAccuracy">
+                  {{ formatAverage(tweet.accuracy_average) }} ({{ tweet.accuracy_count || 0 }} votes)
+                </span>
+                <button v-if="!tweet.hasVotedAccuracy" v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                  class="rating-button" @click="rateMessage(tweet.id, score, 'accuracy')">
+                  {{ score }}
+                </button>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+
     <footer class="message-box">
       <textarea v-model="messageContent" placeholder="Type your message here" class="message-input"></textarea>
       <div class="captcha-and-send">
@@ -105,11 +124,12 @@
   </div>
 </template>
 
+
 <script>
 import axios from 'axios';
 import VTooltip from 'v-tooltip';
 import { mapActions, mapState } from 'vuex';
-const apiBase = 'http://10.129.199.88:2222'; 
+const apiBase = 'http://10.129.199.88:2222';
 
 export default {
   name: 'Home',
@@ -122,12 +142,14 @@ export default {
       password: '',
       messageContent: '',
       messages: [],
-      gdacsMessages: [], // 新增数组用于存储右侧的消息数据
+      warnings: [],
+      selectedWarning: null,
+      gdacsMessages: [],
       captchaInput: '',
       captchaSrc: `${apiBase}/captcha`,
       filters: {
-        isDisaster: 'true',
-        sourceType: 'all'
+        disasterType: 'all',
+        disasterLocation: 'all'
       },
       sortOrder: 'true',
       apiBase: 'http://10.129.199.88:2222',
@@ -139,53 +161,45 @@ export default {
   created() {
     const token = localStorage.getItem('jwt');
     if (token) {
-      console.log('JWT:', token);  // 输出查看 JWT
-      // 执行已登录状态的相关操作
+      console.log('JWT:', token);
     }
     console.log("Component created, isLoggedIn:", this.isLoggedIn);
-    this.fetchMessages();
-    this.fetchGdacsMessages(); // 调用方法获取右侧的消息数据
+    this.fetchWarnings();
+    this.fetchGdacsMessages();
   },
   computed: {
     ...mapState(['isLoggedIn'])
   },
   methods: {
-    ...mapActions(['logout']), // 从 Vuex 引入 logout action
-    fetchMessages() {
-  const params = {
-    ...this.filters,
-    orderBy: 'date_time',
-    orderDesc: this.sortOrder
-  };
-  // 获取存储在 localStorage 中的 JWT
+    ...mapActions(['logout']),
+    fetchWarnings() {
+      const params = {
+        ...this.filters,
+        orderBy: 'disaster_time',
+        orderDesc: this.sortOrder
+      };
       const token = localStorage.getItem('jwt');
-      axios.get(`${this.apiBase}/api/messages`, {
+      axios.get(`${this.apiBase}/api/warnings`, {
         headers: {
-          'Authorization': `Bearer ${token}`  // Using Bearer token for JWT
+          'Authorization': `Bearer ${token}`
         },
         params: params
       })
       .then(response => {
-        this.messages = response.data.map(msg => ({
-          ...msg,
-          hasVotedAuthenticity: false,
-          hasVotedAccuracy: false,
-          hasVotedDelete: msg.hasVotedDelete || false  // Assuming backend sends this flag
-        }));
+        this.warnings = response.data;
       })
       .catch(error => {
-        console.error('Error fetching messages:', error);
-        // Handle specific errors such as token expiration
+        console.error('Error fetching warnings:', error);
         if (error.response && error.response.status === 401) {
           this.displayToast("Session expired. Please login again.");
           this.$router.push('/auth');
         }
       });
     },
-    fetchGdacsMessages() { // 新方法用于获取右侧消息数据
+    fetchGdacsMessages() {
       axios.get(`${this.apiBase}/api/gdacsMessages`, {
         params: {
-          orderBy: 'date_time', // example of ordering by date
+          orderBy: 'date_time',
           orderDesc: true
         }
       })
@@ -204,7 +218,7 @@ export default {
       })
       .then(response => {
         this.displayToast('Authentication successful!');
-        this.email = '';  // Optionally clear fields
+        this.email = '';
         this.password = '';
       })
       .catch(error => {
@@ -214,7 +228,7 @@ export default {
     },
     handleLogout() {
       this.logout().then(() => {
-        this.$router.push('/auth'); // 在成功登出后重定向到登录页面
+        this.$router.push('/auth');
       });
     },
     sendMessage() {
@@ -247,7 +261,6 @@ export default {
       this.captchaSrc = `${apiBase}/captcha?rand=${Math.random()}`;
     },
     rateMessage(messageId, score, type) {
-      // Retrieve the JWT from local storage or other storage
       const token = localStorage.getItem('jwt');
       if (!token) {
         this.displayToast("You are not logged in or your session has expired.");
@@ -255,19 +268,17 @@ export default {
         return;
       }
 
-      // Make the POST request with the JWT token in the headers
       axios.post(`${this.apiBase}/api/rate-message`, {
         message_id: messageId,
         rating: score,
         type: type
       }, {
         headers: {
-          'Authorization': `Bearer ${token}`  // Include the JWT token here
+          'Authorization': `Bearer ${token}`
         }
       }).then(response => {
         if (response.data.status === 'success') {
-          // Find the message and update its authenticity/accuracy averages and raters count
-          const message = this.messages.find(m => m.id === messageId);
+          const message = this.selectedWarning.related_tweets.find(m => m.id === messageId);
           if (message) {
             if (type === 'authenticity') {
               message.authenticity_average = response.data.authenticity_average;
@@ -283,7 +294,6 @@ export default {
           this.displayToast('Error updating rating: ' + response.data.message);
         }
       }).catch(error => {
-        // Log and alert the error message
         console.error('Error submitting rating:', error.response?.data || error.message);
         this.displayToast('Failed to submit rating. Please try again later.');
       });
@@ -292,8 +302,7 @@ export default {
       return value ? value.toFixed(2) : '0.00';
     },
     deleteMessage(messageId) {
-      // Retrieve the JWT from local storage or your Vuex store
-      const token = localStorage.getItem('jwt');  // Assuming the token is stored in local storage
+      const token = localStorage.getItem('jwt');
 
       if (!token) {
         this.displayToast("You are not logged in or your session has expired.");
@@ -309,12 +318,12 @@ export default {
       .then(response => {
         if (response.data.status === 'success') {
           this.displayToast('Message deleted successfully');
-          this.fetchMessages(); // Refresh the list of messages
+          this.fetchWarnings();
         } else if (response.data.status === 'pending') {
           this.displayToast('Vote recorded. Pending more votes.');
-          const message = this.messages.find(m => m.id === messageId);
+          const message = this.selectedWarning.related_tweets.find(m => m.id === messageId);
           if (message) {
-            message.hasVotedDelete = true; // Mark as voted to disable further voting
+            message.hasVotedDelete = true;
           }
         } else {
           this.displayToast('Error: ' + response.data.message);
@@ -333,6 +342,9 @@ export default {
         this.showToast = false;
       }, duration);
     },
+    selectWarning(warning) {
+      this.selectedWarning = warning;
+    }
   }
 }
 </script>
@@ -393,7 +405,11 @@ export default {
   border: none;
   cursor: pointer;
   border-radius: 5px;
-  transition: background-color 0.3s ease
+  transition: background-color 0.3s ease;
+}
+
+.logout-button:hover {
+  background-color: #c0392b;
 }
 
 .main-content {
@@ -416,12 +432,20 @@ export default {
   background-color: #eef;  /* 轻微背景色差异 */
 }
 
-.message {
+.message, .warning {
   background: #fff;
   margin-bottom: 10px;
   padding: 15px;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.warning-content {
+  cursor: pointer;
+}
+
+.warning-content:hover {
+  background-color: #f0f0f0;
 }
 
 .main-content h2 {
@@ -602,5 +626,39 @@ label {
 @keyframes fadeout {
   from { top: 20px; opacity: 1; }
   to { top: 0; opacity: 0; }
+}
+
+.modal-content {
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 20px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+
+.modal h3 {
+  margin-top: 0;
+}
+
+.tweet {
+  background: #f9f9f9;
+  margin-bottom: 10px;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 </style>

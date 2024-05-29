@@ -26,48 +26,50 @@ export default {
     return {
       email: '',
       password: '',
-      captchaSrc: `${apiBase}/captcha`,  // 初始化验证码图片的源
-      captchaInput: '',  // 存储用户输入的验证码
-      toastMessage: '',  // 存储toast消息的文本
-      showToast: false,  // 控制toast显示的布尔值
+      captchaSrc: `${apiBase}/captcha`,
+      captchaInput: '',
+      toastMessage: '',
+      showToast: false,
     };
   },
   methods: {
+    ...mapActions(['login']),
     authenticate() {
       axios.post(`${apiBase}/subscribe`, {
         email: this.email,
         password: this.password,
         captcha: this.captchaInput,
-      }, { withCredentials: true }).then(response => {
-        console.log('Login Response:', response.data);  // 输出响应数据
+      }, {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        withCredentials: true
+      }).then(response => {
+        console.log('Login Response:', response.data);
         if (response.data.access_token) {
-          localStorage.setItem('jwt', response.data.access_token);  // 保存 JWT
-          this.$store.dispatch('login');  // 更新 Vuex 状态
+          localStorage.setItem('jwt', response.data.access_token);
+          this.$store.dispatch('login', response.data.access_token); // 传递token
           this.displayToast('Authentication successful!');
-          this.$router.push('/');  // 重定向到主页
+          this.$router.push('/');
         } else {
           this.displayToast('Login failed: ' + response.data.message);
-          this.refreshCaptcha();  // 登录失败时刷新验证码
+          this.refreshCaptcha();
         }
       }).catch(error => {
         console.error('Authentication error:', error);
         this.displayToast('Authentication failed. Please try again.');
-        this.refreshCaptcha();  // 登录失败时刷新验证码
+        this.refreshCaptcha();
       });
     },
-    logout() {
-      localStorage.removeItem('jwt');  // 移除 JWT
-      this.$store.dispatch('logout');  // 更新 Vuex 状态
-    },
     refreshCaptcha() {
-      this.captchaSrc = `${apiBase}/captcha?rand=${Math.random()}`;  // 刷新验证码
+      this.captchaSrc = `${apiBase}/captcha?rand=${Math.random()}`;
     },
     displayToast(message) {
       this.toastMessage = message;
       this.showToast = true;
       setTimeout(() => {
         this.showToast = false;
-      }, 3000);  // 消息显示3秒后消失
+      }, 3000);
     }
   }
 }

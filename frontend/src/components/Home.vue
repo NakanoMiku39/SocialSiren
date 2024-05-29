@@ -9,7 +9,7 @@
       <header class="header">
         <h1 class="website-name">SocialSiren</h1>
         <p>Welcome, user!</p>
-        <button @click="logout" class="logout-button">Logout</button>
+        <button @click="handleLogout" class="logout-button">Logout</button>
       </header>
     </div>
 
@@ -18,13 +18,11 @@
         <option value="all">All Types</option>
         <option value="earthquake">Earthquake</option>
         <option value="flood">Flood</option>
-        <!-- 添加更多灾害类型 -->
       </select>
       <select v-model="filters.disasterLocation">
         <option value="all">All Locations</option>
         <option value="city1">City 1</option>
         <option value="city2">City 2</option>
-        <!-- 添加更多灾害地点 -->
       </select>
       <select v-model="sortOrder">
         <option value="true">Newest First</option>
@@ -33,7 +31,7 @@
       <button @click="fetchWarnings">Apply Filters</button>
     </div>
 
-    <main class="main-content">
+    <div class="main-content">
       <div class="left-panel">
         <h2>Latest Warnings</h2>
         <ul>
@@ -43,6 +41,34 @@
               <p>Time: {{ warning.disaster_time }}</p>
               <p>Location: {{ warning.disaster_location }}</p>
             </div>
+            <div class="ratings">
+              <div class="rating-container">
+                <label v-tooltip="'Rate the authenticity of this warning.'">Authenticity:</label>
+                <span v-if="warning.hasVotedAuthenticity">
+                  {{ formatAverage(warning.authenticity_average) }} ({{ warning.authenticity_raters || 0 }} votes)
+                </span>
+                <button v-if="!warning.hasVotedAuthenticity" v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                  class="rating-button" @click="rateWarning(warning.id, score, 'authenticity')">
+                  {{ score }}
+                </button>
+              </div>
+              <div class="rating-container">
+                <label v-tooltip="'Rate the accuracy of this warning.'">Accuracy:</label>
+                <span v-if="warning.hasVotedAccuracy">
+                  {{ formatAverage(warning.accuracy_average) }} ({{ warning.accuracy_raters || 0 }} votes)
+                </span>
+                <button v-if="!warning.hasVotedAccuracy" v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                  class="rating-button" @click="rateWarning(warning.id, score, 'accuracy')">
+                  {{ score }}
+                </button>
+              </div>
+            </div>
+            <button v-if="!warning.hasVotedDelete" @click="deleteWarning(warning.id)" class="delete-button">
+              Vote to Delete
+            </button>
+            <button v-else class="delete-button" disabled>
+              Vote Recorded
+            </button>
           </li>
         </ul>
       </div>
@@ -59,53 +85,48 @@
           </li>
         </ul>
       </div>
-    </main>
+    </div>
 
-    <div v-if="selectedWarning" class="modal" @click.self="selectedWarning = null">
+    <div v-if="selectedWarning" class="modal">
       <div class="modal-content">
-        <h3>Warning Details</h3>
-        <p>Disaster Type: {{ selectedWarning.disaster_type }}</p>
-        <p>Time: {{ selectedWarning.disaster_time }}</p>
-        <p>Location: {{ selectedWarning.disaster_location }}</p>
-        <h4>Related Tweets</h4>
+        <h2>Warning Messages</h2>
+        <button @click="closeWarning" class="close-button">X</button>
         <ul>
-          <li v-for="tweet in selectedWarning.related_tweets" :key="tweet.id" class="tweet">
-            <div class="tweet-content">
-              <p>Posted on: {{ tweet.date_time }}</p>
-              <p>{{ tweet.content }}</p>
-              <p>Disaster: {{ tweet.is_disaster ? 'Yes' : 'No' }}
-                <span v-if="tweet.is_disaster">- Probability: {{ tweet.probability }} <p>Disaster Type: {{ tweet.disaster_type }}</p></span>
-              </p>
-              <p>Source: {{ tweet.source_type }} (ID: {{ tweet.source_id }})</p>
-              <button v-if="!tweet.hasVotedDelete" @click="deleteMessage(tweet.id)" class="delete-button">
-                Vote to Delete
-              </button>
-              <button v-else class="delete-button" disabled>
-                Vote Recorded
-              </button>
+          <li v-for="message in selectedWarning.related_tweets" :key="message.id" class="message">
+            <div class="message-content">
+              <p>Posted on: {{ message.date_time }}</p>
+              <p>{{ message.content }}</p>
+              <p>Source: {{ message.source_type }}</p>
+              <p>Location: {{ message.location }}</p>
             </div>
             <div class="ratings">
               <div class="rating-container">
                 <label v-tooltip="'Rate the authenticity of this message.'">Authenticity:</label>
-                <span v-if="tweet.hasVotedAuthenticity">
-                  {{ formatAverage(tweet.authenticity_average) }} ({{ tweet.authenticity_count || 0 }} votes)
+                <span v-if="message.hasVotedAuthenticity">
+                  {{ formatAverage(message.authenticity_average) }} ({{ message.authenticity_raters || 0 }} votes)
                 </span>
-                <button v-if="!tweet.hasVotedAuthenticity" v-for="score in [1, 2, 3, 4, 5]" :key="score"
-                  class="rating-button" @click="rateMessage(tweet.id, score, 'authenticity')">
+                <button v-if="!message.hasVotedAuthenticity" v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                  class="rating-button" @click="rateMessage(message.id, score, 'authenticity')">
                   {{ score }}
                 </button>
               </div>
               <div class="rating-container">
                 <label v-tooltip="'Rate the accuracy of this message.'">Accuracy:</label>
-                <span v-if="tweet.hasVotedAccuracy">
-                  {{ formatAverage(tweet.accuracy_average) }} ({{ tweet.accuracy_count || 0 }} votes)
+                <span v-if="message.hasVotedAccuracy">
+                  {{ formatAverage(message.accuracy_average) }} ({{ message.accuracy_raters || 0 }} votes)
                 </span>
-                <button v-if="!tweet.hasVotedAccuracy" v-for="score in [1, 2, 3, 4, 5]" :key="score"
-                  class="rating-button" @click="rateMessage(tweet.id, score, 'accuracy')">
+                <button v-if="!message.hasVotedAccuracy" v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                  class="rating-button" @click="rateMessage(message.id, score, 'accuracy')">
                   {{ score }}
                 </button>
               </div>
             </div>
+            <button v-if="!message.hasVotedDelete" @click="deleteMessage(message.id)" class="delete-button">
+              Vote to Delete
+            </button>
+            <button v-else class="delete-button" disabled>
+              Vote Recorded
+            </button>
           </li>
         </ul>
       </div>
@@ -124,11 +145,11 @@
   </div>
 </template>
 
-
 <script>
 import axios from 'axios';
 import VTooltip from 'v-tooltip';
 import { mapActions, mapState } from 'vuex';
+
 const apiBase = 'http://10.129.199.88:2222';
 
 export default {
@@ -152,26 +173,24 @@ export default {
         disasterLocation: 'all'
       },
       sortOrder: 'true',
-      apiBase: 'http://10.129.199.88:2222',
+      apiBase,
       toastMessage: '',
       showToast: false,
       toastTimeout: null,
     };
   },
   created() {
-    const token = localStorage.getItem('jwt');
-    if (token) {
-      console.log('JWT:', token);
+    if (this.isLoggedIn) {
+      this.fetchUserVotesAndRatings();
     }
-    console.log("Component created, isLoggedIn:", this.isLoggedIn);
     this.fetchWarnings();
     this.fetchGdacsMessages();
   },
   computed: {
-    ...mapState(['isLoggedIn'])
+    ...mapState(['isLoggedIn', 'userVotesAndRatings'])
   },
   methods: {
-    ...mapActions(['logout']),
+    ...mapActions(['logout', 'fetchUserVotesAndRatings', 'login']),
     fetchWarnings() {
       const params = {
         ...this.filters,
@@ -183,10 +202,11 @@ export default {
         headers: {
           'Authorization': `Bearer ${token}`
         },
-        params: params
+        params
       })
       .then(response => {
         this.warnings = response.data;
+        this.updateUserVotesAndRatings();
       })
       .catch(error => {
         console.error('Error fetching warnings:', error);
@@ -211,54 +231,43 @@ export default {
         this.displayToast('Failed to fetch GDACS messages.');
       });
     },
-    authenticate() {
-      axios.post(`${apiBase}/subscribe`, {
-        email: this.email,
-        password: this.password
-      })
-      .then(response => {
-        this.displayToast('Authentication successful!');
-        this.email = '';
-        this.password = '';
-      })
-      .catch(error => {
-        console.error('Authentication error:', error);
-        this.displayToast('Authentication failed. Please try again.');
+    updateUserVotesAndRatings() {
+      const { resultVotes, warningVotes, resultRatings, warningRatings } = this.userVotesAndRatings;
+      resultVotes.forEach(vote => {
+        const message = this.messages.find(m => m.id === vote.message_id);
+        if (message) {
+          message.hasVotedDelete = vote.vote_type === 'delete';
+        }
       });
-    },
-    handleLogout() {
-      this.logout().then(() => {
-        this.$router.push('/auth');
+
+      warningVotes.forEach(vote => {
+        const warning = this.warnings.find(w => w.id === vote.warning_id);
+        if (warning) {
+          warning.hasVotedDelete = vote.vote_type === 'delete';
+        }
       });
-    },
-    sendMessage() {
-      if (!this.messageContent.trim()) {
-        this.displayToast('Message cannot be empty!');
-        return;
-      }
-      if (!this.captchaInput.trim()) {
-        this.displayToast('Captcha cannot be empty!');
-        return;
-      }
-      const message = {
-        content: this.messageContent,
-        captcha: this.captchaInput
-      };
-      axios.post(`${apiBase}/api/send-message`, message, { withCredentials: true })
-        .then(() => {
-          this.displayToast('Message sent successfully!');
-          this.messageContent = '';
-          this.captchaInput = '';
-          this.refreshCaptcha();
-        })
-        .catch(error => {
-          console.error('Error sending message:', error);
-          this.displayToast('Failed to send message. Please check the captcha and try again.');
-          this.refreshCaptcha();
-        });
-    },
-    refreshCaptcha() {
-      this.captchaSrc = `${apiBase}/captcha?rand=${Math.random()}`;
+
+      resultRatings.forEach(rating => {
+        const message = this.messages.find(m => m.id === rating.message_id);
+        if (message) {
+          if (rating.type === 'authenticity') {
+            message.hasVotedAuthenticity = true;
+          } else if (rating.type === 'accuracy') {
+            message.hasVotedAccuracy = true;
+          }
+        }
+      });
+
+      warningRatings.forEach(rating => {
+        const warning = this.warnings.find(w => w.id === rating.warning_id);
+        if (warning) {
+          if (rating.type === 'authenticity') {
+            warning.hasVotedAuthenticity = true;
+          } else if (rating.type === 'accuracy') {
+            warning.hasVotedAccuracy = true;
+          }
+        }
+      });
     },
     rateMessage(messageId, score, type) {
       const token = localStorage.getItem('jwt');
@@ -290,6 +299,7 @@ export default {
               message.hasVotedAccuracy = true;
             }
           }
+          this.displayToast('Rating submitted successfully!');
         } else {
           this.displayToast('Error updating rating: ' + response.data.message);
         }
@@ -298,12 +308,59 @@ export default {
         this.displayToast('Failed to submit rating. Please try again later.');
       });
     },
-    formatAverage(value) {
-      return value ? value.toFixed(2) : '0.00';
+
+    rateWarning(warningId, score, type) {
+      const token = localStorage.getItem('jwt');
+      if (!token) {
+        this.displayToast("You are not logged in or your session has expired.");
+        this.$router.push('/auth');
+        return;
+      }
+
+      axios.post(`${this.apiBase}/api/rate-warning`, {
+        warning_id: warningId,
+        rating: score,
+        type
+      }, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      }).then(response => {
+        if (response.data.status === 'success') {
+          const warning = this.warnings.find(w => w.id === warningId);
+          if (warning) {
+            if (type === 'authenticity') {
+              warning.authenticity_average = response.data.authenticity_average;
+              warning.authenticity_raters = response.data.authenticity_count;
+              warning.hasVotedAuthenticity = true;
+            } else if (type === 'accuracy') {
+              warning.accuracy_average = response.data.accuracy_average;
+              warning.accuracy_raters = response.data.accuracy_count;
+              warning.hasVotedAccuracy = true;
+            }
+          }
+          if (this.selectedWarning && this.selectedWarning.id === warningId) {
+            if (type === 'authenticity') {
+              this.selectedWarning.authenticity_average = response.data.authenticity_average;
+              this.selectedWarning.authenticity_count = response.data.authenticity_count;
+              this.selectedWarning.hasVotedAuthenticity = true;
+            } else if (type === 'accuracy') {
+              this.selectedWarning.accuracy_average = response.data.accuracy_average;
+              this.selectedWarning.accuracy_count = response.data.accuracy_count;
+              this.selectedWarning.hasVotedAccuracy = true;
+            }
+          }
+          this.displayToast('Rating submitted successfully!');
+        } else {
+          this.displayToast('Error updating rating: ' + response.data.message);
+        }
+      }).catch(error => {
+        console.error('Error submitting rating:', error.response?.data || error.message);
+        this.displayToast('Failed to submit rating. Please try again later.');
+      });
     },
     deleteMessage(messageId) {
       const token = localStorage.getItem('jwt');
-
       if (!token) {
         this.displayToast("You are not logged in or your session has expired.");
         this.$router.push('/auth');
@@ -318,7 +375,10 @@ export default {
       .then(response => {
         if (response.data.status === 'success') {
           this.displayToast('Message deleted successfully');
-          this.fetchWarnings();
+          const messageIndex = this.selectedWarning.related_tweets.findIndex(m => m.id === messageId);
+          if (messageIndex !== -1) {
+            this.selectedWarning.related_tweets.splice(messageIndex, 1);
+          }
         } else if (response.data.status === 'pending') {
           this.displayToast('Vote recorded. Pending more votes.');
           const message = this.selectedWarning.related_tweets.find(m => m.id === messageId);
@@ -330,9 +390,94 @@ export default {
         }
       })
       .catch(error => {
-        console.error('Deletion failed:', error.response.data);
-        this.displayToast('Failed to delete message: ' + error.response.data.message);
+        console.error('Deletion failed:', error.response?.data || error.message);
+        this.displayToast('Failed to delete message. Please try again later.');
       });
+    },
+    deleteWarning(warningId) {
+      const token = localStorage.getItem('jwt');
+      if (!token) {
+        this.displayToast("You are not logged in or your session has expired.");
+        this.$router.push('/auth');
+        return;
+      }
+
+      axios.post(`${this.apiBase}/api/delete-warning`, { warning_id: warningId, delete_vote: true }, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      .then(response => {
+        if (response.data.status === 'success') {
+          this.displayToast('Warning deleted successfully');
+          this.fetchWarnings();
+        } else if (response.data.status === 'pending') {
+          this.displayToast('Vote recorded. Pending more votes.');
+          const warning = this.warnings.find(w => w.id === warningId);
+          if (warning) {
+            warning.hasVotedDelete = true;
+          }
+          if (this.selectedWarning && this.selectedWarning.id === warningId) {
+            this.selectedWarning.hasVotedDelete = true;
+          }
+        } else {
+          this.displayToast('Error: ' + response.data.message);
+        }
+      })
+      .catch(error => {
+        console.error('Deletion failed:', error.response?.data || error.message);
+        this.displayToast('Failed to delete warning. Please try again later.');
+      });
+    },
+    authenticate() {
+      this.login({
+        email: this.email,
+        password: this.password,
+        captcha: this.captchaInput // 确保包含验证码输入
+      })
+      .then(() => {
+        this.displayToast('Authentication successful!');
+        this.email = '';
+        this.password = '';
+        this.captchaInput = '';
+      })
+      .catch(error => {
+        console.error('Authentication error:', error);
+        this.displayToast('Authentication failed. Please try again.');
+      });
+    },
+    handleLogout() {
+      this.logout();
+      this.$router.push('/auth');
+    },
+    sendMessage() {
+      if (!this.messageContent.trim()) {
+        this.displayToast('Message cannot be empty!');
+        return;
+      }
+      if (!this.captchaInput.trim()) {
+        this.displayToast('Captcha cannot be empty!');
+        return;
+      }
+      const message = {
+        content: this.messageContent,
+        captcha: this.captchaInput
+      };
+      axios.post(`${this.apiBase}/api/send-message`, message, { withCredentials: true })
+        .then(() => {
+          this.displayToast('Message sent successfully!');
+          this.messageContent = '';
+          this.captchaInput = '';
+          this.refreshCaptcha();
+        })
+        .catch(error => {
+          console.error('Error sending message:', error);
+          this.displayToast('Failed to send message. Please check the captcha and try again.');
+          this.refreshCaptcha();
+        });
+    },
+    refreshCaptcha() {
+      this.captchaSrc = `${this.apiBase}/captcha?rand=${Math.random()}`;
     },
     displayToast(message, duration = 3000) {
       this.toastMessage = message;
@@ -344,6 +489,12 @@ export default {
     },
     selectWarning(warning) {
       this.selectedWarning = warning;
+    },
+    closeWarning() {
+      this.selectedWarning = null;
+    },
+    formatAverage(value) {
+      return value ? value.toFixed(2) : 'N/A';
     }
   }
 }
@@ -421,15 +572,15 @@ export default {
 
 .left-panel, .right-panel {
   flex: 1;
-  overflow-y: auto;  /* 允许滚动 */
+  overflow-y: auto;
   margin: 0 10px;
   padding: 10px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  height: 500px; /* 或其他固定高度，取决于页面设计 */
+  height: 500px;
 }
 
 .right-panel {
-  background-color: #eef;  /* 轻微背景色差异 */
+  background-color: #eef;
 }
 
 .message, .warning {
@@ -437,7 +588,6 @@ export default {
   margin-bottom: 10px;
   padding: 15px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .warning-content {
@@ -463,7 +613,6 @@ export default {
   margin-bottom: 10px;
   padding: 15px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .message-box {
@@ -628,15 +777,6 @@ label {
   to { top: 0; opacity: 0; }
 }
 
-.modal-content {
-  max-height: 80vh;
-  overflow-y: auto;
-  padding: 20px;
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-
 .modal {
   position: fixed;
   top: 0;
@@ -650,15 +790,23 @@ label {
   z-index: 1000;
 }
 
-.modal h3 {
-  margin-top: 0;
+.modal-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+  position: relative;
 }
 
-.tweet {
-  background: #f9f9f9;
-  margin-bottom: 10px;
-  padding: 15px;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+.close-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
 }
 </style>

@@ -1,32 +1,75 @@
-// Vuex 4 导入方法
 import { createStore } from 'vuex';
+import axios from 'axios';
 
-const store = createStore({
-  state() {
-    return {
-      isLoggedIn: false
-    };
+const apiBase = 'http://10.129.199.88:2222';
+
+export default createStore({
+  state: {
+    isLoggedIn: false,
+    userVotesAndRatings: {
+      resultVotes: [],
+      warningVotes: [],
+      resultRatings: [],
+      warningRatings: []
+    }
   },
   mutations: {
-    setLogin(state, status) {
-      state.isLoggedIn = status;
+    setLoginState(state, isLoggedIn) {
+      state.isLoggedIn = isLoggedIn;
     },
-    login(state) {
-      state.isLoggedIn = true;
-    },
-    logout(state) {
-      state.isLoggedIn = false;
+    setUserVotesAndRatings(state, data) {
+      state.userVotesAndRatings = data;
     }
   },
   actions: {
-    login({ commit }) {
-      commit('setLogin', true);
+    async fetchUserVotesAndRatings({ commit }) {
+      try {
+        const token = localStorage.getItem('jwt');
+        if (!token) {
+          throw new Error('No JWT token found');
+        }
+        console.log('JWT token:', token); // 打印 JWT token
+        const response = await axios.get(`${apiBase}/api/user-votes-and-ratings`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        commit('setUserVotesAndRatings', response.data);
+      } catch (error) {
+        // Detailed error logging
+        if (error.response) {
+          console.error('API response error:', error.response.data);
+        } else if (error.request) {
+          console.error('No response received:', error.request);
+        } else {
+          console.error('Request setup error:', error.message);
+        }
+        throw error;
+      }
     },
     logout({ commit }) {
-      localStorage.removeItem('jwt');  // 清除本地存储的 JWT
-      commit('setLogin', false);
+      localStorage.removeItem('jwt');
+      commit('setLoginState', false);
+      commit('setUserVotesAndRatings', {
+        resultVotes: [],
+        warningVotes: [],
+        resultRatings: [],
+        warningRatings: []
+      });
+    },
+    async login({ commit, dispatch }, token) {
+      try {
+        if (!token) {
+          throw new Error('No access token received');
+        }
+        console.log('Saving JWT token:', token); // 打印保存的 JWT token
+        localStorage.setItem('jwt', token);
+        commit('setLoginState', true);
+        await dispatch('fetchUserVotesAndRatings');
+      } catch (error) {
+        console.error('Login error:', error);
+        throw error;
+      }
     }
   }
 });
-
-export default store;

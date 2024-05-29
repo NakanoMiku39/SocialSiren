@@ -62,19 +62,22 @@ class Result(Base):
     id = Column(Integer, primary_key=True)
     content = Column(Text)
     date_time = Column(DateTime)
-    is_disaster = Column(Boolean)  # 是否为灾害
+    is_disaster = Column(Boolean)
     disaster_type = Column(String)
-    probability = Column(Float)    # 灾害的概率
-    source_type = Column(String(50))  # 来源类型：'topic' 或 'reply'
-    source_id = Column(Integer)       # 原始话题或回复的ID
+    probability = Column(Float)
+    source_type = Column(String(50))
+    source_id = Column(Integer)
     authenticity_rating = Column(Float, default=0.0)
     accuracy_rating = Column(Float, default=0.0)
     authenticity_raters = Column(Integer, default=0)
     accuracy_raters = Column(Integer, default=0)
-    delete_votes = Column(Integer, default=0)  # Track votes for deletion
-    votes = relationship('Vote', back_populates='result')
+    delete_votes = Column(Integer, default=0)
     processed = Column(Boolean, default=False)
     warning_id = Column(Integer, ForeignKey('warnings.id'))
+
+    warning = relationship('Warning', back_populates='results')
+    votes = relationship('Vote', back_populates='result')
+    ratings = relationship('Rating', back_populates='result')
 
     @hybrid_property
     def authenticity_average(self):
@@ -92,37 +95,90 @@ class Warning(Base):
     __tablename__ = 'warnings'
     id = Column(Integer, primary_key=True)
     disaster_type = Column(String)
-    disaster_time = Column(String)  # 考虑时间字段的实际需求
+    disaster_time = Column(String)
     disaster_location = Column(String)
-    results = relationship('Result', back_populates='warning')
+    authenticity_rating = Column(Float, default=0.0)
+    accuracy_rating = Column(Float, default=0.0)
+    authenticity_raters = Column(Integer, default=0)
+    accuracy_raters = Column(Integer, default=0)
+    delete_votes = Column(Integer, default=0)
 
-Result.warning = relationship('Warning', back_populates='results')
+    results = relationship('Result', back_populates='warning')
+    votes = relationship('WarningVote', back_populates='warning')
+    ratings = relationship('WarningRating', back_populates='warning')
+
+    @hybrid_property
+    def authenticity_average(self):
+        if self.authenticity_raters > 0:
+            return self.authenticity_rating / self.authenticity_raters
+        return 0
+
+    @hybrid_property
+    def accuracy_average(self):
+        if self.accuracy_raters > 0:
+            return self.accuracy_rating / self.accuracy_raters
+        return 0
 
 class Subscriber(Base):
     __tablename__ = 'subscribers'
     id = Column(Integer, primary_key=True, autoincrement=True)
     email = Column(String(255), unique=True, nullable=False)
-    password = Column(String, nullable=False)  # 新增密码字段
-    votes = relationship('Vote', back_populates='subscriber')    
-    
+    password = Column(String, nullable=False)
+    votes = relationship('Vote', back_populates='subscriber')
+    warning_votes = relationship('WarningVote', back_populates='subscriber')
+    ratings = relationship('Rating', back_populates='subscriber')
+    warning_ratings = relationship('WarningRating', back_populates='subscriber')
+
 class Vote(Base):
     __tablename__ = 'votes'
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('subscribers.id'), nullable=False)
     message_id = Column(Integer, ForeignKey('results.id'), nullable=False)
-    vote_type = Column(String(50))  # Can be 'delete', 'upvote', etc., depending on your needs
+    vote_type = Column(String(50))
 
     subscriber = relationship('Subscriber', back_populates='votes')
     result = relationship('Result', back_populates='votes')
     
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+class WarningVote(Base):
+    __tablename__ = 'warning_votes'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('subscribers.id'), nullable=False)
+    warning_id = Column(Integer, ForeignKey('warnings.id'), nullable=False)
+    vote_type = Column(String(50))
+
+    subscriber = relationship('Subscriber', back_populates='warning_votes')
+    warning = relationship('Warning', back_populates='votes')
+    
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
 class Rating(Base):
     __tablename__ = 'ratings'
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('subscribers.id'), nullable=False)
     message_id = Column(Integer, ForeignKey('results.id'), nullable=False)
-    type = Column(String(50))  # 'authenticity' or 'accuracy'
+    type = Column(String(50))
     rating = Column(Float)
 
-    # Relationships with backrefs
-    user = relationship('Subscriber', backref=backref('ratings', cascade='all, delete-orphan'))
-    message = relationship('Result', backref=backref('ratings', cascade='all, delete-orphan'))
+    subscriber = relationship('Subscriber', back_populates='ratings')
+    result = relationship('Result', back_populates='ratings')
+    
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+class WarningRating(Base):
+    __tablename__ = 'warning_ratings'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('subscribers.id'), nullable=False)
+    warning_id = Column(Integer, ForeignKey('warnings.id'), nullable=False)
+    type = Column(String(50))
+    rating = Column(Float)
+
+    subscriber = relationship('Subscriber', back_populates='warning_ratings')
+    warning = relationship('Warning', back_populates='ratings')
+    
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}

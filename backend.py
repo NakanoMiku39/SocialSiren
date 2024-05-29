@@ -14,7 +14,7 @@ import class_SubscriptionSystem
 import class_DataManager
 import class_CaptchaService
 import class_ChatGPT
-from class_datatypes import Warning, Result, UsersComments, Vote, Rating
+from class_datatypes import Warning, Result, UsersComments, WarningRating, WarningVote, Vote, Rating
 from datetime import datetime
 from sqlalchemy import create_engine, desc, asc
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -157,10 +157,26 @@ class Backend:
         finally:
             db_session.close()
 
-
+    def get_user_votes_and_ratings(self, user_id):
+        try:
+            db_session = self.session()
+            warning_votes = db_session.query(WarningVote).filter_by(user_id=user_id).all()
+            result_votes = db_session.query(Vote).filter_by(user_id=user_id).all()
+            warning_ratings = db_session.query(WarningRating).filter_by(user_id=user_id).all()
+            result_ratings = db_session.query(Rating).filter_by(user_id=user_id).all()
+            return {
+                "warningVotes": [vote.to_dict() for vote in warning_votes],
+                "resultVotes": [vote.to_dict() for vote in result_votes],
+                "warningRatings": [rating.to_dict() for rating in warning_ratings],
+                "resultRatings": [rating.to_dict() for rating in result_ratings]
+            }
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return None
+        
 # 创建 Flask 应用
 app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=["http://10.129.199.88:1111"])
+CORS(app, supports_credentials=True, origins=["http://10.129.199.88:1111"])  # 确保CORS策略允许来自前端的请求
 jwt = JWTManager(app)
 app.secret_key = 'your_secret_key_here'  # 用于安全地保存 session 信息
 app.config['SESSION_TYPE'] = 'filesystem'  # 使用文件系统存储会话
@@ -319,13 +335,84 @@ def captcha():
     # 确保 captcha_image 是一个正确的 BytesIO 流
     return send_file(captcha_image, mimetype='image/png')
 
-@app.route('/api/rate-message', methods=['POST'])
-@jwt_required()  # Ensure the user is authenticated
-def rate_message():
-    user_id = get_jwt_identity()  # Assuming JWT authentication is used
+@app.route('/api/rate-warning', methods=['POST'])
+@jwt_required()
+def rate_warning():
+    user_id = get_jwt_identity()
     if not user_id:
         return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
 
+    data = request.get_json()
+    warning_id = data.get('warning_id')
+    rating = data.get('rating')
+    rating_type = data.get('type')
+
+    db_session = backend.session()
+    warning = db_session.query(Warning).get(warning_id)
+    if not warning:
+        return jsonify({'status': 'error', 'message': 'Warning not found'}), 404
+
+    existing_rating = db_session.query(WarningRating).filter_by(user_id=user_id, warning_id=warning_id, type=rating_type).first()
+    if existing_rating:
+        return jsonify({'status': 'error', 'message': 'You have already rated this warning'}), 400
+
+    new_rating = WarningRating(user_id=user_id, warning_id=warning_id, type=rating_type, rating=rating)
+    db_session.add(new_rating)
+
+    if rating_type == 'authenticity':
+        warning.authenticity_rating += rating
+        warning.authenticity_raters += 1
+    elif rating_type == 'accuracy':
+        warning.accuracy_rating += rating
+        warning.accuracy_raters += 1
+    else:
+        return jsonify({'status': 'error', 'message': 'Invalid rating type'}), 400
+
+    db_session.commit()
+
+    return jsonify({
+        'status': 'success',
+        'authenticity_average': calculate_average(warning.authenticity_rating, warning.authenticity_raters),
+        'accuracy_average': calculate_average(warning.accuracy_rating, warning.accuracy_raters),
+        'authenticity_count': warning.authenticity_raters,
+        'accuracy_count': warning.accuracy_raters
+    })
+
+@app.route('/api/delete-warning', methods=['POST'])
+@jwt_required()
+def delete_warning():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    warning_id = data.get('warning_id')
+
+    db_session = backend.session()
+    warning = db_session.query(Warning).get(warning_id)
+
+    if not warning:
+        return jsonify({'status': 'error', 'message': 'Warning not found'}), 404
+
+    existing_vote = db_session.query(WarningVote).filter_by(user_id=user_id, warning_id=warning_id, vote_type='delete').one_or_none()
+
+    if existing_vote:
+        return jsonify({'status': 'error', 'message': 'You have already voted to delete this warning'}), 409
+
+    warning.delete_votes += 1
+
+    new_vote = WarningVote(user_id=user_id, warning_id=warning_id, vote_type='delete')
+    db_session.add(new_vote)
+
+    if warning.delete_votes >= 10:
+        db_session.delete(warning)
+        db_session.commit()
+        return jsonify({'status': 'success', 'message': 'Warning deleted successfully'}), 200
+
+    db_session.commit()
+    return jsonify({'status': 'pending', 'message': 'Vote recorded. Pending more votes.'}), 202
+
+@app.route('/api/rate-message', methods=['POST'])
+@jwt_required()
+def rate_message():
+    user_id = get_jwt_identity()
     data = request.get_json()
     message_id = data.get('message_id')
     rating = data.get('rating')
@@ -356,43 +443,35 @@ def rate_message():
 
     return jsonify({
         'status': 'success',
-        'message': 'Rating updated successfully.',
         'authenticity_average': calculate_average(message.authenticity_rating, message.authenticity_raters),
         'accuracy_average': calculate_average(message.accuracy_rating, message.accuracy_raters),
         'authenticity_count': message.authenticity_raters,
         'accuracy_count': message.accuracy_raters
     })
-    
+
 @app.route('/api/delete-message', methods=['POST'])
-@jwt_required()  # Ensure the user is authenticated
+@jwt_required()
 def delete_message():
     user_id = get_jwt_identity()
     data = request.get_json()
-    print("Received data:", data)
     message_id = data.get('message_id')
 
     db_session = backend.session()
     message = db_session.query(Result).get(message_id)
-    print("message:", message, "message_id:", message_id)
-
     if not message:
         return jsonify({'status': 'error', 'message': 'Message not found'}), 404
 
-    # Check if the user has already voted for this message
     existing_vote = db_session.query(Vote).filter_by(user_id=user_id, message_id=message_id, vote_type='delete').one_or_none()
 
     if existing_vote:
         return jsonify({'status': 'error', 'message': 'You have already voted to delete this message'}), 409
 
-    # Increment the delete votes count
     message.delete_votes += 1
 
-    # Record the new vote
     new_vote = Vote(user_id=user_id, message_id=message_id, vote_type='delete')
     db_session.add(new_vote)
 
-    # Check if the vote threshold is met to delete the message
-    if message.delete_votes >= 10:  # Example threshold
+    if message.delete_votes >= 10:
         db_session.delete(message)
         db_session.commit()
         return jsonify({'status': 'success', 'message': 'Message deleted successfully'}), 200
@@ -400,5 +479,33 @@ def delete_message():
     db_session.commit()
     return jsonify({'status': 'pending', 'message': 'Vote recorded. Pending more votes.'}), 202
 
+@app.route('/api/user-votes-and-ratings', methods=['GET'])
+@jwt_required()
+def get_user_votes_and_ratings():
+    user_id = get_jwt_identity()
+    if not user_id:
+        return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+
+    db_session = backend.session()
+    try:
+        result_votes = db_session.query(Vote).filter_by(user_id=user_id).all()
+        warning_votes = db_session.query(WarningVote).filter_by(user_id=user_id).all()
+        result_ratings = db_session.query(Rating).filter_by(user_id=user_id).all()
+        warning_ratings = db_session.query(WarningRating).filter_by(user_id=user_id).all()
+
+        response_data = {
+            'resultVotes': [{'message_id': vote.message_id, 'vote_type': vote.vote_type} for vote in result_votes],
+            'warningVotes': [{'warning_id': vote.warning_id, 'vote_type': vote.vote_type} for vote in warning_votes],
+            'resultRatings': [{'message_id': rating.message_id, 'type': rating.type} for rating in result_ratings],
+            'warningRatings': [{'warning_id': rating.warning_id, 'type': rating.type} for rating in warning_ratings],
+        }
+
+        return jsonify(response_data), 200
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return jsonify({"status": "error", "message": "Failed to retrieve user votes and ratings"}), 500
+    finally:
+        db_session.close()
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', use_reloader=False, debug=True, port=2222)  
+    app.run(host='0.0.0.0', use_reloader=False, debug=True, port=2222)

@@ -261,8 +261,8 @@ def get_warnings():
             result.append({
                 'id': warning.id,
                 'disaster_type': warning.disaster_type,
-                'disaster_time': warning.disaster_time,
                 'disaster_location': warning.disaster_location,
+                'disaster_time': warning.disaster_time,
                 'related_tweets': [{
                     'id': r.id,
                     'content': r.content,

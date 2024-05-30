@@ -95,13 +95,15 @@ class Warning(Base):
     __tablename__ = 'warnings'
     id = Column(Integer, primary_key=True)
     disaster_type = Column(String)
-    disaster_time = Column(String)
     disaster_location = Column(String)
+    disaster_time = Column(String)
     authenticity_rating = Column(Float, default=0.0)
     accuracy_rating = Column(Float, default=0.0)
     authenticity_raters = Column(Integer, default=0)
     accuracy_raters = Column(Integer, default=0)
     delete_votes = Column(Integer, default=0)
+    processed = Column(Boolean, default=False)
+
 
     results = relationship('Result', back_populates='warning')
     votes = relationship('WarningVote', back_populates='warning')

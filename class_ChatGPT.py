@@ -42,23 +42,23 @@ class LangChainModel:
             return False, "", "", ""
         elif parts[0] == "Yes":
             disaster_type = parts[1] if len(parts) > 1 else ""
-            time = parts[2] if len(parts) > 2 else ""
-            location = parts[3] if len(parts) > 3 else ""
-            return True, disaster_type, time, location
+            location = parts[2] if len(parts) > 2 else ""
+            time = parts[3] if len(parts) > 3 else ""
+            return True, disaster_type, location, time
         return False, "", "", ""
 
-    def create_warning_if_needed(self, db_session, is_disaster, disaster_type, disaster_time, disaster_location):
+    def create_warning_if_needed(self, db_session, is_disaster, disaster_type, disaster_location, disaster_time):
         if is_disaster:
             existing_warning = db_session.query(Warning).filter(
                 Warning.disaster_type == disaster_type,
+                Warning.disaster_location == disaster_location,
                 Warning.disaster_time == disaster_time,
-                Warning.disaster_location == disaster_location
             ).first()
             if not existing_warning:
                 new_warning = Warning(
                     disaster_type=disaster_type,
+                    disaster_location=disaster_location,
                     disaster_time=disaster_time,
-                    disaster_location=disaster_location
                 )
                 db_session.add(new_warning)
                 db_session.flush()  # Ensure the warning ID is available
@@ -75,7 +75,7 @@ class LangChainModel:
                     response = self.chain.run({"question": question})
                     is_disaster, disaster_type, disaster_location, disaster_time= self.parse_response(response)
                     if is_disaster:
-                        warning_id = self.create_warning_if_needed(db_session, is_disaster, disaster_type, disaster_time, disaster_location)
+                        warning_id = self.create_warning_if_needed(db_session, is_disaster, disaster_type, disaster_location, disaster_time)
                         new_result = Result(
                             source_id=original.id,
                             content=original.content,  # Use original content

@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from class_datatypes import Subscriber, Result
+from class_datatypes import Subscriber, Warning
 import time
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -69,8 +69,8 @@ class SubscriptionSystem:
         session = self.Session()
         try:
             # 检查是否有标记为灾害的结果
-            disaster_results = session.query(Result).filter_by(is_disaster=True).all()
-            if disaster_results:
+            disaster_warnings = session.query(Warning).all()
+            if disaster_warnings:
                 # 如果有灾害结果，获取所有订阅者的邮件地址
                 subscribers = self.get_all_subscribers()
                 # 创建邮件内容
@@ -90,9 +90,9 @@ class SubscriptionSystem:
 
     def send_emails(self, emails, message):
         db_session = self.Session()
-        unprocessed_results = db_session.query(Result).filter_by(is_disaster=True, processed=False).all()
-        if not unprocessed_results:
-            print("[Debug] No unprocessed disaster results to send.")
+        unprocessed_warnings = db_session.query(Warning).filter_by(processed=False).all()
+        if not unprocessed_warnings:
+            print("[Debug] No unprocessed disaster warnings to send.")
             return
         
         server = smtplib.SMTP(self.email_host, self.email_port)
@@ -101,11 +101,11 @@ class SubscriptionSystem:
         
         try:
             with db_session.no_autoflush:
-                for result in unprocessed_results:
+                for warning in unprocessed_warnings:
                     msg = MIMEMultipart()
                     msg['From'] = self.email_username
                     msg['Subject'] = 'Urgent Notification'
-                    body = f"Disaster Alert: {result.content} \n Disaster Type: {result.disaster_type} \n probability {result.probability}"
+                    body = f"Disaster Alert: \n Disaster Type: {warning.disaster_type} \n Location: {warning.disaster_location}\n Time: {warning.disaster_time}"
                     msg.attach(MIMEText(body, 'plain'))
                     text = msg.as_string()
 
@@ -113,7 +113,7 @@ class SubscriptionSystem:
                         msg['To'] = email
                         self.send_email(server, email, text)
                     
-                    result.processed = True  # Mark as processed regardless of individual email success
+                    warning.processed = True  # Mark as processed regardless of individual email success
                 db_session.commit()
         except Exception as e:
             print(f"[Debug] Exception during email sending: {e}")

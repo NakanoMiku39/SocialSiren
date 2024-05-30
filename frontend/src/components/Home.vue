@@ -45,7 +45,7 @@
               <div class="rating-container">
                 <label v-tooltip="'Rate the authenticity of this warning.'">Authenticity:</label>
                 <span v-if="warning.hasVotedAuthenticity">
-                  {{ formatAverage(warning.authenticity_average) }} ({{ warning.authenticity_raters || 0 }} votes)
+                  {{ formatAverage(warning.authenticity_average) }} ({{ warning.authenticity_count || 0 }} votes)
                 </span>
                 <button v-if="!warning.hasVotedAuthenticity" v-for="score in [1, 2, 3, 4, 5]" :key="score"
                   class="rating-button" @click="rateWarning(warning.id, score, 'authenticity')">
@@ -55,7 +55,7 @@
               <div class="rating-container">
                 <label v-tooltip="'Rate the accuracy of this warning.'">Accuracy:</label>
                 <span v-if="warning.hasVotedAccuracy">
-                  {{ formatAverage(warning.accuracy_average) }} ({{ warning.accuracy_raters || 0 }} votes)
+                  {{ formatAverage(warning.accuracy_average) }} ({{ warning.accuracy_count || 0 }} votes)
                 </span>
                 <button v-if="!warning.hasVotedAccuracy" v-for="score in [1, 2, 3, 4, 5]" :key="score"
                   class="rating-button" @click="rateWarning(warning.id, score, 'accuracy')">
@@ -103,7 +103,7 @@
               <div class="rating-container">
                 <label v-tooltip="'Rate the authenticity of this message.'">Authenticity:</label>
                 <span v-if="message.hasVotedAuthenticity">
-                  {{ formatAverage(message.authenticity_average) }} ({{ message.authenticity_raters || 0 }} votes)
+                  {{ formatAverage(message.authenticity_average) }} ({{ message.authenticity_count || 0 }} votes)
                 </span>
                 <button v-if="!message.hasVotedAuthenticity" v-for="score in [1, 2, 3, 4, 5]" :key="score"
                   class="rating-button" @click="rateMessage(message.id, score, 'authenticity')">
@@ -113,7 +113,7 @@
               <div class="rating-container">
                 <label v-tooltip="'Rate the accuracy of this message.'">Accuracy:</label>
                 <span v-if="message.hasVotedAccuracy">
-                  {{ formatAverage(message.accuracy_average) }} ({{ message.accuracy_raters || 0 }} votes)
+                  {{ formatAverage(message.accuracy_average) }} ({{ message.accuracy_count || 0 }} votes)
                 </span>
                 <button v-if="!message.hasVotedAccuracy" v-for="score in [1, 2, 3, 4, 5]" :key="score"
                   class="rating-button" @click="rateMessage(message.id, score, 'accuracy')">
@@ -182,10 +182,14 @@ export default {
   created() {
     this.$store.dispatch('checkLoginStatus').then(() => {
       if (this.isLoggedIn) {
-        this.fetchUserVotesAndRatings();
+        this.$store.dispatch('fetchUserVotesAndRatings').then(() => {
+          this.fetchWarnings();
+          this.fetchGdacsMessages();
+        });
+      } else {
+        this.fetchWarnings();
+        this.fetchGdacsMessages();
       }
-      this.fetchWarnings();
-      this.fetchGdacsMessages();
     });
   },
   computed: {
@@ -237,40 +241,17 @@ export default {
     },
     updateUserVotesAndRatings() {
       const { resultVotes, warningVotes, resultRatings, warningRatings } = this.userVotesAndRatings;
-      resultVotes.forEach(vote => {
-        const message = this.messages.find(m => m.id === vote.message_id);
-        if (message) {
-          message.hasVotedDelete = vote.vote_type === 'delete';
-        }
-      });
 
-      warningVotes.forEach(vote => {
-        const warning = this.warnings.find(w => w.id === vote.warning_id);
-        if (warning) {
-          warning.hasVotedDelete = vote.vote_type === 'delete';
-        }
-      });
-
-      resultRatings.forEach(rating => {
-        const message = this.messages.find(m => m.id === rating.message_id);
-        if (message) {
-          if (rating.type === 'authenticity') {
-            message.hasVotedAuthenticity = true;
-          } else if (rating.type === 'accuracy') {
-            message.hasVotedAccuracy = true;
-          }
-        }
-      });
-
-      warningRatings.forEach(rating => {
-        const warning = this.warnings.find(w => w.id === rating.warning_id);
-        if (warning) {
-          if (rating.type === 'authenticity') {
-            warning.hasVotedAuthenticity = true;
-          } else if (rating.type === 'accuracy') {
-            warning.hasVotedAccuracy = true;
-          }
-        }
+      this.warnings.forEach(warning => {
+        warning.hasVotedDelete = warningVotes.some(vote => vote.warning_id === warning.id && vote.vote_type === 'delete');
+        warning.hasVotedAuthenticity = warningRatings.some(rating => rating.warning_id === warning.id && rating.type === 'authenticity');
+        warning.hasVotedAccuracy = warningRatings.some(rating => rating.warning_id === warning.id && rating.type === 'accuracy');
+        
+        warning.related_tweets.forEach(tweet => {
+          tweet.hasVotedDelete = resultVotes.some(vote => vote.message_id === tweet.id && vote.vote_type === 'delete');
+          tweet.hasVotedAuthenticity = resultRatings.some(rating => rating.message_id === tweet.id && rating.type === 'authenticity');
+          tweet.hasVotedAccuracy = resultRatings.some(rating => rating.message_id === tweet.id && rating.type === 'accuracy');
+        });
       });
     },
     rateMessage(messageId, score, type) {
@@ -291,16 +272,19 @@ export default {
         }
       }).then(response => {
         if (response.data.status === 'success') {
-          const message = this.selectedWarning.related_tweets.find(m => m.id === messageId);
-          if (message) {
-            if (type === 'authenticity') {
-              message.authenticity_average = response.data.authenticity_average;
-              message.authenticity_raters = response.data.authenticity_count;
-              message.hasVotedAuthenticity = true;
-            } else if (type === 'accuracy') {
-              message.accuracy_average = response.data.accuracy_average;
-              message.accuracy_raters = response.data.accuracy_count;
-              message.hasVotedAccuracy = true;
+          const warning = this.selectedWarning;
+          if (warning) {
+            const message = warning.related_tweets.find(m => m.id === messageId);
+            if (message) {
+              if (type === 'authenticity') {
+                message.authenticity_average = response.data.authenticity_average;
+                message.authenticity_count = response.data.authenticity_count;
+                message.hasVotedAuthenticity = true;
+              } else if (type === 'accuracy') {
+                message.accuracy_average = response.data.accuracy_average;
+                message.accuracy_count = response.data.accuracy_count;
+                message.hasVotedAccuracy = true;
+              }
             }
           }
           this.displayToast('Rating submitted successfully!');
@@ -312,7 +296,6 @@ export default {
         this.displayToast('Failed to submit rating. Please try again later.');
       });
     },
-
     rateWarning(warningId, score, type) {
       const token = localStorage.getItem('jwt');
       if (!token) {
@@ -324,7 +307,7 @@ export default {
       axios.post(`${this.apiBase}/api/rate-warning`, {
         warning_id: warningId,
         rating: score,
-        type
+        type: type
       }, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -335,23 +318,12 @@ export default {
           if (warning) {
             if (type === 'authenticity') {
               warning.authenticity_average = response.data.authenticity_average;
-              warning.authenticity_raters = response.data.authenticity_count;
+              warning.authenticity_count = response.data.authenticity_count;
               warning.hasVotedAuthenticity = true;
             } else if (type === 'accuracy') {
               warning.accuracy_average = response.data.accuracy_average;
-              warning.accuracy_raters = response.data.accuracy_count;
+              warning.accuracy_count = response.data.accuracy_count;
               warning.hasVotedAccuracy = true;
-            }
-          }
-          if (this.selectedWarning && this.selectedWarning.id === warningId) {
-            if (type === 'authenticity') {
-              this.selectedWarning.authenticity_average = response.data.authenticity_average;
-              this.selectedWarning.authenticity_count = response.data.authenticity_count;
-              this.selectedWarning.hasVotedAuthenticity = true;
-            } else if (type === 'accuracy') {
-              this.selectedWarning.accuracy_average = response.data.accuracy_average;
-              this.selectedWarning.accuracy_count = response.data.accuracy_count;
-              this.selectedWarning.hasVotedAccuracy = true;
             }
           }
           this.displayToast('Rating submitted successfully!');
@@ -432,6 +404,18 @@ export default {
         console.error('Deletion failed:', error.response?.data || error.message);
         this.displayToast('Failed to delete warning. Please try again later.');
       });
+    },
+    findMessageById(messageId) {
+      for (const warning of this.warnings) {
+        const message = warning.related_tweets.find(m => m.id === messageId);
+        if (message) {
+          return message;
+        }
+      }
+      return null;
+    },
+    findWarningById(warningId) {
+      return this.warnings.find(w => w.id === warningId) || null;
     },
     authenticate() {
       this.login({

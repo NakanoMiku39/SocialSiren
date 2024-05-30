@@ -28,13 +28,13 @@ export default createStore({
         if (!token) {
           throw new Error('No JWT token found');
         }
-        console.log('JWT token:', token); // 打印 JWT token
         const response = await axios.get(`${apiBase}/api/user-votes-and-ratings`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
         });
         commit('setUserVotesAndRatings', response.data);
+        return response.data;  // 添加这行
       } catch (error) {
         // Detailed error logging
         if (error.response) {

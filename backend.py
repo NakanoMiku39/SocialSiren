@@ -263,6 +263,10 @@ def get_warnings():
                 'disaster_type': warning.disaster_type,
                 'disaster_location': warning.disaster_location,
                 'disaster_time': warning.disaster_time,
+                'authenticity_average': calculate_average(warning.authenticity_rating, warning.authenticity_raters),
+                'accuracy_average': calculate_average(warning.accuracy_rating, warning.accuracy_raters),
+                'authenticity_count': warning.authenticity_raters,  # 确保返回评分人数
+                'accuracy_count': warning.accuracy_raters,  # 确保返回评分人数
                 'related_tweets': [{
                     'id': r.id,
                     'content': r.content,
@@ -274,8 +278,8 @@ def get_warnings():
                     'date_time': r.date_time.isoformat() if r.date_time else None,
                     'authenticity_average': calculate_average(r.authenticity_rating, r.authenticity_raters),
                     'accuracy_average': calculate_average(r.accuracy_rating, r.accuracy_raters),
-                    'authenticity_count': r.authenticity_raters,
-                    'accuracy_count': r.accuracy_raters,
+                    'authenticity_count': r.authenticity_raters,  # 确保返回评分人数
+                    'accuracy_count': r.accuracy_raters,  # 确保返回评分人数
                     'hasVotedAuthenticity': False,  # Default to False, update with actual logic if needed
                     'hasVotedAccuracy': False,      # Default to False, update with actual logic if needed
                     'hasVotedDelete': r.delete_votes > 0  # Assume backend sends this flag
@@ -286,7 +290,7 @@ def get_warnings():
     except Exception as e:
         print(f"An error occurred: {e}")
         return jsonify({"status": "error", "message": "Failed to retrieve warnings"}), 500
-    
+
 @app.route('/api/gdacsMessages')
 def get_gdacs_messages():
     filters = {

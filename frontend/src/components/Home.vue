@@ -180,11 +180,13 @@ export default {
     };
   },
   created() {
-    if (this.isLoggedIn) {
-      this.fetchUserVotesAndRatings();
-    }
-    this.fetchWarnings();
-    this.fetchGdacsMessages();
+    this.$store.dispatch('checkLoginStatus').then(() => {
+      if (this.isLoggedIn) {
+        this.fetchUserVotesAndRatings();
+      }
+      this.fetchWarnings();
+      this.fetchGdacsMessages();
+    });
   },
   computed: {
     ...mapState(['isLoggedIn', 'userVotesAndRatings'])
@@ -206,7 +208,9 @@ export default {
       })
       .then(response => {
         this.warnings = response.data;
-        this.updateUserVotesAndRatings();
+        if (this.isLoggedIn) {
+          this.updateUserVotesAndRatings();
+        }
       })
       .catch(error => {
         console.error('Error fetching warnings:', error);

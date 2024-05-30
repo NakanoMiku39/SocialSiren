@@ -70,6 +70,15 @@ export default createStore({
         console.error('Login error:', error);
         throw error;
       }
+    },
+    async checkLoginStatus({ commit, dispatch }) {  // 从 context 参数中解构出 dispatch
+      const token = localStorage.getItem('jwt');
+      if (token) {
+        commit('setLoginState', true);
+        await dispatch('fetchUserVotesAndRatings');
+      } else {
+        commit('setLoginState', false);
+      }
     }
   }
 });

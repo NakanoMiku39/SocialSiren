@@ -1,5 +1,5 @@
 <template>
-  <div class="container">
+  <div class="container" @click.self="closeWarning">
     <div v-if="showToast" class="toast">{{ toastMessage }}</div>
     <div v-if="!isLoggedIn" class="header pre-login-header">
       <h1 class="website-name">SocialSiren</h1>
@@ -47,20 +47,26 @@
                 <span v-if="warning.hasVotedAuthenticity">
                   {{ formatAverage(warning.authenticity_average) }} ({{ warning.authenticity_count || 0 }} votes)
                 </span>
-                <button v-if="!warning.hasVotedAuthenticity" v-for="score in [1, 2, 3, 4, 5]" :key="score"
-                  class="rating-button" @click="rateWarning(warning.id, score, 'authenticity')">
-                  {{ score }}
-                </button>
+                <span v-if="!warning.hasVotedAuthenticity">
+                  <i v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                    :class="['fa', 'fa-star', { 'rating-star': true, 'active': score <= warning.authenticityScore }]"
+                    @mouseover="warning.authenticityScore = score"
+                    @mouseleave="warning.authenticityScore = 0"
+                    @click="rateWarning(warning.id, score, 'authenticity')"></i>
+                </span>
               </div>
               <div class="rating-container">
                 <label v-tooltip="'Rate the accuracy of this warning.'">Accuracy:</label>
                 <span v-if="warning.hasVotedAccuracy">
                   {{ formatAverage(warning.accuracy_average) }} ({{ warning.accuracy_count || 0 }} votes)
                 </span>
-                <button v-if="!warning.hasVotedAccuracy" v-for="score in [1, 2, 3, 4, 5]" :key="score"
-                  class="rating-button" @click="rateWarning(warning.id, score, 'accuracy')">
-                  {{ score }}
-                </button>
+                <span v-if="!warning.hasVotedAccuracy">
+                  <i v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                    :class="['fa', 'fa-star', { 'rating-star': true, 'active': score <= warning.accuracyScore }]"
+                    @mouseover="warning.accuracyScore = score"
+                    @mouseleave="warning.accuracyScore = 0"
+                    @click="rateWarning(warning.id, score, 'accuracy')"></i>
+                </span>
               </div>
             </div>
             <button v-if="!warning.hasVotedDelete" @click="deleteWarning(warning.id)" class="delete-button">
@@ -87,7 +93,7 @@
       </div>
     </div>
 
-    <div v-if="selectedWarning" class="modal">
+    <div v-if="selectedWarning" class="modal" @click.self="closeWarning">
       <div class="modal-content">
         <h2>Warning Messages</h2>
         <button @click="closeWarning" class="close-button">X</button>
@@ -105,20 +111,26 @@
                 <span v-if="message.hasVotedAuthenticity">
                   {{ formatAverage(message.authenticity_average) }} ({{ message.authenticity_count || 0 }} votes)
                 </span>
-                <button v-if="!message.hasVotedAuthenticity" v-for="score in [1, 2, 3, 4, 5]" :key="score"
-                  class="rating-button" @click="rateMessage(message.id, score, 'authenticity')">
-                  {{ score }}
-                </button>
+                <span v-if="!message.hasVotedAuthenticity">
+                  <i v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                    :class="['fa', 'fa-star', { 'rating-star': true, 'active': score <= message.authenticityScore }]"
+                    @mouseover="message.authenticityScore = score"
+                    @mouseleave="message.authenticityScore = 0"
+                    @click="rateMessage(message.id, score, 'authenticity')"></i>
+                </span>
               </div>
               <div class="rating-container">
                 <label v-tooltip="'Rate the accuracy of this message.'">Accuracy:</label>
                 <span v-if="message.hasVotedAccuracy">
                   {{ formatAverage(message.accuracy_average) }} ({{ message.accuracy_count || 0 }} votes)
                 </span>
-                <button v-if="!message.hasVotedAccuracy" v-for="score in [1, 2, 3, 4, 5]" :key="score"
-                  class="rating-button" @click="rateMessage(message.id, score, 'accuracy')">
-                  {{ score }}
-                </button>
+                <span v-if="!message.hasVotedAccuracy">
+                  <i v-for="score in [1, 2, 3, 4, 5]" :key="score"
+                    :class="['fa', 'fa-star', { 'rating-star': true, 'active': score <= message.accuracyScore }]"
+                    @mouseover="message.accuracyScore = score"
+                    @mouseleave="message.accuracyScore = 0"
+                    @click="rateMessage(message.id, score, 'accuracy')"></i>
+                </span>
               </div>
             </div>
             <button v-if="!message.hasVotedDelete" @click="deleteMessage(message.id)" class="delete-button">
@@ -211,7 +223,11 @@ export default {
         params
       })
       .then(response => {
-        this.warnings = response.data;
+        this.warnings = response.data.map(warning => ({
+          ...warning,
+          authenticityScore: 0,
+          accuracyScore: 0,
+        }));
         if (this.isLoggedIn) {
           this.updateUserVotesAndRatings();
         }
@@ -232,7 +248,11 @@ export default {
         }
       })
       .then(response => {
-        this.gdacsMessages = response.data;
+        this.gdacsMessages = response.data.map(message => ({
+          ...message,
+          authenticityScore: 0,
+          accuracyScore: 0,
+        }));
       })
       .catch(error => {
         console.error('Error fetching GDACS messages:', error);
@@ -489,13 +509,15 @@ export default {
 </script>
 
 <style scoped>
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css');
+
 .container {
   display: flex;
   flex-direction: column;
   height: 100vh;
   font-family: 'Arial', sans-serif;
   color: #333;
-  background-color: #fff;
+  background-color: #f9f9f9;
 }
 
 .header {
@@ -554,7 +576,7 @@ export default {
 .main-content {
   display: flex;
   padding: 20px;
-  background-color: #f9f9f9;
+  background-color: #fff;
   border-top: 1px solid #ccc;
 }
 
@@ -712,20 +734,14 @@ label {
   font-weight: bold;
 }
 
-.rating-button {
-  margin-right: 5px;
-  background-color: #e0e0e0;
-  border: none;
-  padding: 5px;
+.rating-star {
+  color: #FFD700;
   cursor: pointer;
 }
 
-.rating-button:hover {
-  background-color: #d0d0d0;
-}
-
-.rating-container:hover .rating-button {
-  display: inline-block;
+.rating-star:hover,
+.rating-star.active {
+  color: #FFA500;
 }
 
 .delete-button {
@@ -794,7 +810,13 @@ label {
   right: 10px;
   background: transparent;
   border: none;
-  font-size: 20px;
+  font-size: 24px;
   cursor: pointer;
+  color: #c0392b;
+  transition: color 0.3s;
+}
+
+.close-button:hover {
+  color: #e74c3c;
 }
 </style>

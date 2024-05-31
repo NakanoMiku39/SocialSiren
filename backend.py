@@ -390,7 +390,7 @@ def delete_warning():
     warning_id = data.get('warning_id')
 
     db_session = backend.session()
-    warning = db_session.query(Warning).get(warning_id)
+    warning = db_session.get(Warning, warning_id)
 
     if not warning:
         return jsonify({'status': 'error', 'message': 'Warning not found'}), 404
@@ -405,7 +405,9 @@ def delete_warning():
     new_vote = WarningVote(user_id=user_id, warning_id=warning_id, vote_type='delete')
     db_session.add(new_vote)
 
-    if warning.delete_votes >= 10:
+    if warning.delete_votes >= 1:
+        for rating in warning.ratings:
+            db_session.delete(rating)
         db_session.delete(warning)
         db_session.commit()
         return jsonify({'status': 'success', 'message': 'Warning deleted successfully'}), 200
@@ -461,7 +463,7 @@ def delete_message():
     message_id = data.get('message_id')
 
     db_session = backend.session()
-    message = db_session.query(Result).get(message_id)
+    message = db_session.get(Result, message_id)
     if not message:
         return jsonify({'status': 'error', 'message': 'Message not found'}), 404
 
@@ -475,7 +477,9 @@ def delete_message():
     new_vote = Vote(user_id=user_id, message_id=message_id, vote_type='delete')
     db_session.add(new_vote)
 
-    if message.delete_votes >= 10:
+    if message.delete_votes >= 2:  # 你可以根据需要调整这个阈值
+        for rating in message.ratings:
+            db_session.delete(rating)
         db_session.delete(message)
         db_session.commit()
         return jsonify({'status': 'success', 'message': 'Message deleted successfully'}), 200

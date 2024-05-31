@@ -73,11 +73,11 @@ class Result(Base):
     accuracy_raters = Column(Integer, default=0)
     delete_votes = Column(Integer, default=0)
     processed = Column(Boolean, default=False)
-    warning_id = Column(Integer, ForeignKey('warnings.id'))
+    warning_id = Column(Integer, ForeignKey('warnings.id', ondelete='CASCADE'))
 
     warning = relationship('Warning', back_populates='results')
-    votes = relationship('Vote', back_populates='result')
-    ratings = relationship('Rating', back_populates='result')
+    votes = relationship('Vote', back_populates='result', cascade="all, delete-orphan")
+    ratings = relationship('Rating', back_populates='result', cascade="all, delete-orphan")
 
     @hybrid_property
     def authenticity_average(self):
@@ -104,10 +104,9 @@ class Warning(Base):
     delete_votes = Column(Integer, default=0)
     processed = Column(Boolean, default=False)
 
-
-    results = relationship('Result', back_populates='warning')
-    votes = relationship('WarningVote', back_populates='warning')
-    ratings = relationship('WarningRating', back_populates='warning')
+    results = relationship('Result', back_populates='warning', cascade="all, delete-orphan")
+    votes = relationship('WarningVote', back_populates='warning', cascade="all, delete-orphan")
+    ratings = relationship('WarningRating', back_populates='warning', cascade="all, delete-orphan")
 
     @hybrid_property
     def authenticity_average(self):
@@ -148,7 +147,7 @@ class WarningVote(Base):
     __tablename__ = 'warning_votes'
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('subscribers.id'), nullable=False)
-    warning_id = Column(Integer, ForeignKey('warnings.id'), nullable=False)
+    warning_id = Column(Integer, ForeignKey('warnings.id', ondelete='CASCADE'), nullable=False)
     vote_type = Column(String(50))
 
     subscriber = relationship('Subscriber', back_populates='warning_votes')
@@ -161,7 +160,7 @@ class Rating(Base):
     __tablename__ = 'ratings'
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('subscribers.id'), nullable=False)
-    message_id = Column(Integer, ForeignKey('results.id'), nullable=False)
+    message_id = Column(Integer, ForeignKey('results.id', ondelete='CASCADE'), nullable=False)
     type = Column(String(50))
     rating = Column(Float)
 
@@ -175,7 +174,7 @@ class WarningRating(Base):
     __tablename__ = 'warning_ratings'
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('subscribers.id'), nullable=False)
-    warning_id = Column(Integer, ForeignKey('warnings.id'), nullable=False)
+    warning_id = Column(Integer, ForeignKey('warnings.id', ondelete='CASCADE'), nullable=False)
     type = Column(String(50))
     rating = Column(Float)
 

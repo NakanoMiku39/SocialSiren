@@ -19,11 +19,6 @@
         <option value="earthquake">Earthquake</option>
         <option value="flood">Flood</option>
       </select>
-      <select v-model="filters.disasterLocation">
-        <option value="all">All Locations</option>
-        <option value="city1">City 1</option>
-        <option value="city2">City 2</option>
-      </select>
       <select v-model="sortOrder">
         <option value="true">Newest First</option>
         <option value="false">Oldest First</option>
@@ -182,7 +177,6 @@ export default {
       captchaSrc: `${apiBase}/captcha`,
       filters: {
         disasterType: 'all',
-        disasterLocation: 'all'
       },
       sortOrder: 'true',
       apiBase,

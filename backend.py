@@ -228,7 +228,6 @@ def subscribe():
 def get_warnings():
     filters = {
         'disaster_type': None if request.args.get('disasterType') == 'all' else request.args.get('disasterType'),
-        'disaster_location': None if request.args.get('disasterLocation') == 'all' else request.args.get('disasterLocation')
     }
     order_by = request.args.get('orderBy', 'disaster_time')
     order_desc = request.args.get('orderDesc', 'true') in ['true', 'True', '1', True]
@@ -243,10 +242,7 @@ def get_warnings():
         if filters['disaster_type']:
             print(f"[Debug] Filtering by disaster_type: {filters['disaster_type']}")
             query = query.filter(Warning.disaster_type == filters['disaster_type'])
-        if filters['disaster_location']:
-            print(f"[Debug] Filtering by disaster_location: {filters['disaster_location']}")
-            query = query.filter(Warning.disaster_location == filters['disaster_location'])
-        
+
         if order_by and hasattr(Warning, order_by):
             print(f"[Debug] Ordering by: {order_by}")
             order_function = desc if order_desc else asc

@@ -119,7 +119,7 @@ class Backend:
         # gdacsspider_thread = threading.Thread(target=self.gdacs.run, daemon=True)
         model_thread = threading.Thread(target=self.model.run, daemon=True)
         subscriptionsystem_thread = threading.Thread(target=self.subscriptionsystem.run, daemon=True)
-        translator_thread.start()
+        # translator_thread.start()
         # spider_thread.start()
         # gdacsspider_thread.start()
         model_thread.start()
@@ -401,15 +401,25 @@ def delete_warning():
     new_vote = WarningVote(user_id=user_id, warning_id=warning_id, vote_type='delete')
     db_session.add(new_vote)
 
-    if warning.delete_votes >= 1:
-        for rating in warning.ratings:
-            db_session.delete(rating)
-        db_session.delete(warning)
-        db_session.commit()
-        return jsonify({'status': 'success', 'message': 'Warning deleted successfully'}), 200
+    if warning.delete_votes >= 1:  # Adjust the threshold as needed
+        with db_session.no_autoflush:
+            print("[Debug] Checking if the warning is related to any GDACS information...")
+            # Check if the warning is related to any GDACS information
+            if backend.model.is_related_to_any_gdacs(db_session, warning.disaster_type + warning.disaster_location):
+                print("[Debug] Warning is related to GDACS information, deletion aborted.")
+                db_session.commit()
+                return jsonify({'status': 'error', 'message': 'Warning is related to GDACS information and cannot be deleted.'}), 403
+
+            print("[Debug] Warning is not related to any GDACS information, proceeding with deletion...")
+            for rating in warning.ratings:
+                db_session.delete(rating)
+            db_session.delete(warning)
+            db_session.commit()
+            return jsonify({'status': 'success', 'message': 'Warning deleted successfully'}), 200
 
     db_session.commit()
-    return jsonify({'status': 'pending', 'message': 'Vote recorded. Pending more votes.'}), 202
+    print("[Debug] Delete vote recorded. Pending more votes.")
+    return jsonify({'status': 'pending', 'message': 'Vote recorded. Pending more votes. Checking if the message is correct...'}), 202
 
 @app.route('/api/rate-message', methods=['POST'])
 @jwt_required()
@@ -473,15 +483,25 @@ def delete_message():
     new_vote = Vote(user_id=user_id, message_id=message_id, vote_type='delete')
     db_session.add(new_vote)
 
-    if message.delete_votes >= 2:  # 你可以根据需要调整这个阈值
-        for rating in message.ratings:
-            db_session.delete(rating)
-        db_session.delete(message)
-        db_session.commit()
-        return jsonify({'status': 'success', 'message': 'Message deleted successfully'}), 200
+    if message.delete_votes >= 1:  # Adjust the threshold as needed
+        with db_session.no_autoflush:
+            print("[Debug] Checking if the message is related to any GDACS information...")
+            # Check if the message is related to any GDACS information
+            if backend.model.is_related_to_any_gdacs(db_session, message.content):
+                print("[Debug] Message is related to GDACS information, deletion aborted.")
+                db_session.commit()
+                return jsonify({'status': 'error', 'message': 'Message is related to GDACS information and cannot be deleted.'}), 403
+
+            print("[Debug] Message is not related to any GDACS information, proceeding with deletion...")
+            for rating in message.ratings:
+                db_session.delete(rating)
+            db_session.delete(message)
+            db_session.commit()
+            return jsonify({'status': 'success', 'message': 'Message deleted successfully'}), 200
 
     db_session.commit()
-    return jsonify({'status': 'pending', 'message': 'Vote recorded. Pending more votes.'}), 202
+    print("[Debug] Delete vote recorded. Pending more votes.")
+    return jsonify({'status': 'pending', 'message': 'Vote recorded. Pending more votes. Checking if the message is correct...'}), 202
 
 @app.route('/api/user-votes-and-ratings', methods=['GET'])
 @jwt_required()

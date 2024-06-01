@@ -1,12 +1,12 @@
 import time
 from sqlalchemy.exc import SQLAlchemyError
-from class_datatypes import Topics, Replies, UsersComments, Result, Warning
+from class_datatypes import Topics, Replies, UsersComments, Result, Warning, GDACS
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from langchain.chat_models import ChatOpenAI
 
 class LangChainModel:
-    def __init__(self, Session, apikey, model_name='gpt-3.5-turbo'):
+    def __init__(self, Session, apikey, model_name='gpt-3.5-turbo'): #gpt-3.5-turbo or gpt-4
         self.Session = Session
         self.model_name = model_name
         self.llm = ChatOpenAI(api_key=apikey, model_name=model_name)
@@ -118,6 +118,24 @@ class LangChainModel:
         finally:
             db_session.close()
             print("[Debug] Database session closed.")
+    
+    def is_related_to_gdacs(self, message_content, gdacs_content):
+        question = f"Is the following message related to this GDACS information?\nMessage: {message_content}\nGDACS: {gdacs_content}\nYou must answer 'Yes' or 'No' only, no other extra sentences or vocabularies:"
+        response = self.chain.run({"question": question})
+        first_word = response.strip().split()[0]
+        print(f"[Debug] GDACS related check response: {first_word}")
+        return first_word.lower() == "yes"
+
+    def is_related_to_any_gdacs(self, db_session, message_content):
+        print("[Debug] Checking if message is related to any GDACS information...")
+        with db_session.no_autoflush:
+            gdacs_messages = db_session.query(GDACS).all()
+            for gdacs_message in gdacs_messages:
+                if self.is_related_to_gdacs(message_content, gdacs_message.content):
+                    print("[Debug] Message is related to GDACS information.")
+                    return True
+        print("[Debug] Message is not related to any GDACS information.")
+        return False
     
     def run(self):
         print("[Debug] Model activated")

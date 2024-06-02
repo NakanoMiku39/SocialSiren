@@ -174,7 +174,7 @@ export default {
       selectedWarning: null,
       gdacsMessages: [],
       captchaInput: '',
-      captchaSrc: `${apiBase}/captcha`,
+      captchaSrc: `${apiBase}/captcha?rand=${Math.random()}`,
       filters: {
         disasterType: 'all',
       },
@@ -369,6 +369,7 @@ export default {
           if (messageIndex !== -1) {
             this.selectedWarning.related_tweets.splice(messageIndex, 1);
           }
+          this.refreshCaptcha(); // Ensure captcha refresh after delete
         } else if (response.data.status === 'pending') {
           this.displayToast('Vote recorded. Pending more votes.');
           const message = this.selectedWarning.related_tweets.find(m => m.id === messageId);
@@ -377,11 +378,13 @@ export default {
           }
         } else {
           this.displayToast('Error: ' + response.data.message);
+          this.refreshCaptcha(); // Ensure captcha refresh on error
         }
       })
       .catch(error => {
         console.error('Deletion failed:', error.response?.data || error.message);
         this.displayToast('Failed to delete message. Please try again later.');
+        this.refreshCaptcha(); // Ensure captcha refresh on error
       });
     },
     deleteWarning(warningId) {
@@ -401,6 +404,7 @@ export default {
         if (response.data.status === 'success') {
           this.displayToast('Warning deleted successfully');
           this.fetchWarnings();
+          this.refreshCaptcha(); // Ensure captcha refresh after delete
         } else if (response.data.status === 'pending') {
           this.displayToast('Vote recorded. Pending more votes.');
           const warning = this.warnings.find(w => w.id === warningId);
@@ -412,11 +416,13 @@ export default {
           }
         } else {
           this.displayToast('Error: ' + response.data.message);
+          this.refreshCaptcha(); // Ensure captcha refresh on error
         }
       })
       .catch(error => {
         console.error('Deletion failed:', error.response?.data || error.message);
         this.displayToast('Failed to delete warning. Please try again later.');
+        this.refreshCaptcha(); // Ensure captcha refresh on error
       });
     },
     findMessageById(messageId) {
@@ -442,15 +448,18 @@ export default {
         this.email = '';
         this.password = '';
         this.captchaInput = '';
+        this.refreshCaptcha(); // Refresh captcha image after successful login
       })
       .catch(error => {
         console.error('Authentication error:', error);
         this.displayToast('Authentication failed. Please try again.');
+        this.refreshCaptcha(); // Refresh captcha image on error
       });
     },
     handleLogout() {
       this.logout();
       this.$router.push('/auth');
+      this.refreshCaptcha(); // Refresh captcha image on logout
     },
     sendMessage() {
       if (!this.messageContent.trim()) {
@@ -470,12 +479,12 @@ export default {
           this.displayToast('Message sent successfully!');
           this.messageContent = '';
           this.captchaInput = '';
-          this.refreshCaptcha();
+          this.refreshCaptcha(); // Refresh captcha image after message sent
         })
         .catch(error => {
           console.error('Error sending message:', error);
           this.displayToast('Failed to send message. Please check the captcha and try again.');
-          this.refreshCaptcha();
+          this.refreshCaptcha(); // Refresh captcha image on error
         });
     },
     refreshCaptcha() {

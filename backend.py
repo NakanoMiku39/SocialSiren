@@ -194,27 +194,25 @@ def calculate_average(total, count):
 def subscribe():
     print("[Debug from Captcha] Captcha is now:", session)
     data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-    user_captcha_response = data.get('captcha', '')
-    original_captcha = session.get('captcha', '')
+    user_captcha_response = data.get('captcha', '').lower()
+    original_captcha = session.get('captcha', '').lower()
 
     print("User captcha:", user_captcha_response)
-    print("Original captcha:", session.get('captcha', 'Not Set'))
+    print("Original captcha:", original_captcha)
 
     # 检查验证码
-    if not user_captcha_response.lower() == original_captcha.lower():
+    if not user_captcha_response == original_captcha:
         return jsonify({"status": "error", "message": "CAPTCHA validation failed"}), 403
 
     # 清除session中的验证码，确保每个验证码只使用一次
     session.pop('captcha', None)
 
     # 进行用户登录或注册逻辑
-    user_exists, user_info = backend.subscriptionsystem.register_or_login(email, password)
+    user_exists, user_info = backend.subscriptionsystem.register_or_login(data['email'], data['password'])
     if user_exists:
         try:
             # 创建 JWT token
-            access_token = create_access_token(identity=email)
+            access_token = create_access_token(identity=data['email'])
             return jsonify({
                 "message": "Login successful",
                 "access_token": access_token
@@ -222,7 +220,7 @@ def subscribe():
         except Exception as e:
             return jsonify({"error": str(e)}), 500
     else:
-        return jsonify({"error": "Invalid email or password"}), 400   
+        return jsonify({"error": "Invalid email or password"}), 400
     
 @app.route('/api/warnings', methods=['GET'])
 def get_warnings():

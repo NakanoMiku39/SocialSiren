@@ -66,6 +66,7 @@ export default createStore({
         localStorage.setItem('jwt', token);
         commit('setLoginState', true);
         await dispatch('fetchUserVotesAndRatings');
+        dispatch('refreshCaptcha'); // Refresh captcha image on login
       } catch (error) {
         console.error('Login error:', error);
         throw error;
@@ -76,8 +77,15 @@ export default createStore({
       if (token) {
         commit('setLoginState', true);
         await dispatch('fetchUserVotesAndRatings');
+        dispatch('refreshCaptcha'); // Refresh captcha image on status check
       } else {
         commit('setLoginState', false);
+      }
+    },
+    refreshCaptcha() {
+      const captchaImg = document.querySelector('.captcha-image');
+      if (captchaImg) {
+        captchaImg.src = `${apiBase}/captcha?rand=${Math.random()}`;
       }
     }
   }

@@ -6,7 +6,7 @@
       <input v-model="email" type="email" placeholder="Email" required class="auth-input">
       <input v-model="password" type="password" placeholder="Password" required class="auth-input">
       <div class="captcha-wrapper">
-        <img :src="captchaSrc" alt="Captcha" @click="refreshCaptcha" class="captcha-image">
+        <img :src="captchaSrc" :key="captchaSrc" alt="Captcha" @click="refreshCaptcha" class="captcha-image">
         <input type="text" v-model="captchaInput" placeholder="Enter captcha" class="captcha-input">
       </div>
       <button type="submit" class="auth-button submit-button">Submit</button>
@@ -26,7 +26,7 @@ export default {
     return {
       email: '',
       password: '',
-      captchaSrc: `${apiBase}/captcha`,
+      captchaSrc: `${apiBase}/captcha?rand=${Math.random()}`,
       captchaInput: '',
       toastMessage: '',
       showToast: false,
@@ -45,20 +45,20 @@ export default {
         },
         withCredentials: true
       }).then(response => {
-        console.log('Login Response:', response.data);
         if (response.data.access_token) {
-          localStorage.setItem('jwt', response.data.access_token);
-          this.$store.dispatch('login', response.data.access_token); // 传递token
-          this.displayToast('Authentication successful!');
-          this.$router.push('/');
+          this.login(response.data.access_token).then(() => {
+            this.displayToast('Authentication successful!');
+            this.$router.push('/');
+            this.refreshCaptcha(); // Refresh captcha image
+          });
         } else {
           this.displayToast('Login failed: ' + response.data.message);
-          this.refreshCaptcha();
+          this.refreshCaptcha(); // Refresh captcha image
         }
       }).catch(error => {
         console.error('Authentication error:', error);
         this.displayToast('Authentication failed. Please try again.');
-        this.refreshCaptcha();
+        this.refreshCaptcha(); // Refresh captcha image
       });
     },
     refreshCaptcha() {
@@ -136,12 +136,6 @@ export default {
 
 .back-button:hover {
   background-color: #c0392b;
-}
-
-.captcha-and-send {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 }
 
 .captcha-wrapper {

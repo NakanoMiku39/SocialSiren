@@ -10,6 +10,8 @@ import time
 from class_datatypes import GDACS
 from datetime import datetime
 import re
+from sqlalchemy.exc import OperationalError
+from lock import db_lock
 
 class GDACSSpider:
     def __init__(self, download_dir, processed_dir, Session, options):
@@ -21,11 +23,11 @@ class GDACSSpider:
 
     def start_download(self):
         """Set level to 'All', start the search and initiate download."""
-        WebDriverWait(self.driver, 10).until(
+        WebDriverWait(self.driver, 20).until(
             EC.element_to_be_clickable((By.ID, "inputAlert"))
         ).send_keys('All;Orange;Red;Green')
 
-        WebDriverWait(self.driver, 10).until(
+        WebDriverWait(self.driver, 20).until(
             EC.element_to_be_clickable((By.ID, "btnsearch"))
         ).click()
 
@@ -39,8 +41,22 @@ class GDACSSpider:
         while not os.path.exists(geojson_file_path):
             time.sleep(1)
 
+        print(f"[Debug] Found file: {geojson_file_path}")
+
         with open(geojson_file_path, 'r', encoding='utf-8') as file:
-            data = json.load(file)
+            data = file.read()
+            print(f"[Debug] Raw file content: {data[:500]}")  # 打印文件内容的前500个字符进行调试
+
+        try:
+            data = json.loads(data)
+            print(f"[Debug] Parsed data type: {type(data)}")
+        except json.JSONDecodeError as e:
+            print(f"[Debug] JSON decode error: {e}")
+            return
+
+        if not isinstance(data, dict):
+            print("[Debug] Data is not a dictionary, aborting process.")
+            return
 
         self.store_data(data)
         self.manage_file(geojson_file_path)
@@ -69,20 +85,39 @@ class GDACSSpider:
                 # Check if the entry already exists
                 existing_entry = db_session.query(GDACS).filter_by(id=eventid).first()
                 if existing_entry is None:
-                    new_gdacs = GDACS(id=eventid, content=description, date_time=todate, location=country)
-                    db_session.add(new_gdacs)
+                    with db_session.no_autoflush:
+                        new_gdacs = GDACS(id=eventid, content=description, date_time=todate, location=country)
+                        with db_lock:
+                            db_session.add(new_gdacs)
                     print(f"[Debug] Added new entry: {eventid}, {description}, {country}, {todate}")
                 else:
                     print(f"[Debug] Entry already exists, skipping: {eventid}")  
                               
-            db_session.commit()
+            self.retry_on_lock(db_session)
         except Exception as e:
             # 如果出现异常，进行回滚
             print("[Debug] GDACS write failed")
             db_session.rollback()
             raise e
         finally:
-            db_session.close()        
+            db_session.close()
+
+    def retry_on_lock(self, session, max_retries=5, wait_time=1):
+        retries = 0
+        while retries < max_retries:
+            try:
+                with session.no_autoflush:
+                    with db_lock:
+                        session.commit()
+                print("[Debug] GDACS write successful")
+                break
+            except OperationalError as e:
+                if "database is locked" in str(e):
+                    retries += 1
+                    print("[Debug] Database is locked, retrying...")
+                    time.sleep(wait_time)
+                else:
+                    raise
 
     def manage_file(self, file_path):
         """Rename and move the processed file."""
@@ -107,4 +142,3 @@ class GDACSSpider:
         if self.driver:
             self.driver.quit()
         print("WebDriver quit successfully")
-

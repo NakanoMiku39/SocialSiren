@@ -9,6 +9,7 @@ from email.mime.multipart import MIMEMultipart
 from class_datatypes import Subscriber, Warning
 import time
 from werkzeug.security import generate_password_hash, check_password_hash
+from lock import db_lock
 
 class SubscriptionSystem:
     def __init__(self, email_host, email_port, email_username, email_password, Session):
@@ -28,8 +29,9 @@ class SubscriptionSystem:
         try:
             with db_session.no_autoflush:
                 subscriber = Subscriber(email=email)
-                db_session.add(subscriber)
-                db_session.commit()
+                with db_lock:
+                    db_session.add(subscriber)
+                    db_session.commit()
                 self.state = 'Idle'
                 print("[Debug] SubscriptionSystem write successful")
                 return 'Subscriber added successfully'
@@ -47,8 +49,10 @@ class SubscriptionSystem:
         self.state = 'RemovingSubscriber'
         session = self.Session()
         try:
-            result = session.query(Subscriber).filter(Subscriber.email == email).delete()
-            session.commit()
+            with session.no_autoflush:
+                with db_lock:
+                    result = session.query(Subscriber).filter(Subscriber.email == email).delete()
+                    session.commit()
             if result == 0:
                 self.state = 'Idle'
                 return 'No such subscriber found'
@@ -114,7 +118,8 @@ class SubscriptionSystem:
                         self.send_email(server, email, text)
                     
                     warning.processed = True  # Mark as processed regardless of individual email success
-                db_session.commit()
+                with db_lock:
+                    db_session.commit()
         except Exception as e:
             print(f"[Debug] Exception during email sending: {e}")
             db_session.rollback()
@@ -140,10 +145,12 @@ class SubscriptionSystem:
                     return False, 'Invalid password'
             else:
                 # 新用户，注册
-                hashed_password = generate_password_hash(password, method='sha256')
-                new_subscriber = Subscriber(email=email, password=hashed_password)
-                db_session.add(new_subscriber)
-                db_session.commit()
+                with db_session.no_autoflush:
+                    hashed_password = generate_password_hash(password, method='sha256')
+                    new_subscriber = Subscriber(email=email, password=hashed_password)
+                    with db_lock:
+                        db_session.add(new_subscriber)
+                        db_session.commit()
                 self.state = 'Idle'
                 return True, 'Registration successful'
         except IntegrityError:

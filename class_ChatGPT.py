@@ -4,6 +4,7 @@ from class_datatypes import Topics, Replies, UsersComments, Result, Warning, GDA
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from langchain.chat_models import ChatOpenAI
+from lock import db_lock
 
 class LangChainModel:
     def __init__(self, Session, apikey, model_name='gpt-3.5-turbo'): #gpt-3.5-turbo or gpt-4
@@ -55,13 +56,15 @@ class LangChainModel:
                 Warning.disaster_time == disaster_time,
             ).first()
             if not existing_warning:
-                new_warning = Warning(
-                    disaster_type=disaster_type,
-                    disaster_location=disaster_location,
-                    disaster_time=disaster_time,
-                )
-                db_session.add(new_warning)
-                db_session.flush()  # Ensure the warning ID is available
+                with db_session.no_autoflush:
+                    new_warning = Warning(
+                        disaster_type=disaster_type,
+                        disaster_location=disaster_location,
+                        disaster_time=disaster_time,
+                    )
+                    with db_lock:
+                        db_session.add(new_warning)
+                        db_session.flush()  # Ensure the warning ID is available
                 return new_warning.id
             return existing_warning.id
         return None
@@ -73,21 +76,23 @@ class LangChainModel:
                 try:
                     question = item.content
                     response = self.chain.run({"question": question})
-                    is_disaster, disaster_type, disaster_location, disaster_time= self.parse_response(response)
+                    is_disaster, disaster_type, disaster_location, disaster_time = self.parse_response(response)
                     if is_disaster:
-                        warning_id = self.create_warning_if_needed(db_session, is_disaster, disaster_type, disaster_location, disaster_time)
-                        new_result = Result(
-                            source_id=original.id,
-                            content=original.content,  # Use original content
-                            date_time=item.date_time,
-                            is_disaster=1,
-                            probability=1.0,  # Assume high confidence for simplicity
-                            disaster_type=disaster_type,
-                            source_type=source_type.__tablename__,
-                            warning_id=warning_id
-                        )
-                        db_session.add(new_result)
-                        item.processed = True
+                        with db_session.no_autoflush:
+                            warning_id = self.create_warning_if_needed(db_session, is_disaster, disaster_type, disaster_location, disaster_time)
+                            new_result = Result(
+                                source_id=original.id,
+                                content=original.content,  # Use original content
+                                date_time=item.date_time,
+                                is_disaster=1,
+                                probability=1.0,  # Assume high confidence for simplicity
+                                disaster_type=disaster_type,
+                                source_type=source_type.__tablename__,
+                                warning_id=warning_id
+                            )
+                            with db_lock:
+                                db_session.add(new_result)
+                            item.processed = True
                         print(f"Processed {source_type.__tablename__} {original.id}")
                 except Exception as e:
                     print(f"Failed processing {source_type.__tablename__} {original.id}: {str(e)}")
@@ -105,8 +110,8 @@ class LangChainModel:
                     self.process_and_save_results(db_session, topics, Topics)
                     self.process_and_save_results(db_session, replies, Replies)
                     self.process_and_save_results(db_session, comments, UsersComments)
-
-                db_session.commit()
+                with db_lock:
+                    db_session.commit()
                 print("[Debug] Model write successful, sleeping for 10 seconds...")
                 time.sleep(10)
         except SQLAlchemyError as db_err:

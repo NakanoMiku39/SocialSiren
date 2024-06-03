@@ -13,7 +13,7 @@ import random
 import re
 from class_datatypes import Topics, Replies
 from datetime import datetime
-import configparser
+from lock import db_lock
 
 class Spider:
     def __init__(self, config, Session, options) -> None:
@@ -109,18 +109,21 @@ class Spider:
                             existing_topic = db_session.query(Topics).filter_by(id=code).first()
                             if not existing_topic:
                                 new_topic = Topics(id=code, content=box_content.text, date_time=date_time_obj)
-                                db_session.add(new_topic)
+                                with db_lock:
+                                    db_session.add(new_topic)
                         else:
                             existing_reply = db_session.query(Replies).filter_by(id=code).first()
                             if not existing_reply:
                                 new_reply = Replies(id=code, content=box_content.text, topic_id=int(codes_in_sidebar[0].text[1:]), date_time=date_time_obj)
-                                db_session.add(new_reply)
+                                with db_lock:
+                                    db_session.add(new_reply)
 
                 sidebar.find_element(By.CSS_SELECTOR, "span.icon.icon-close").click()
                 time.sleep(random.randint(1, 5))
         
                 # 尝试提交所有翻译到数据库
-                db_session.commit()
+                with db_lock:  # 使用锁来确保线程安全
+                    db_session.commit()
                 print("[Debug] Spider write successful")
         except Exception as e:
             # 如果出现异常，进行回滚

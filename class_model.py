@@ -6,6 +6,7 @@ from sklearn.preprocessing import LabelEncoder
 from class_datatypes import Topics, Replies, UsersComments, TranslatedTopics, TranslatedReplies, TranslatedUsersComments, Result
 import time
 from sqlalchemy.exc import SQLAlchemyError
+from lock import db_lock
 
 class DisasterTweetModel:
     def __init__(self, train_path, test_path, Session, model_path='model/distilbert_disaster_model', sequence_length=128):
@@ -92,7 +93,8 @@ class DisasterTweetModel:
                             disaster_type=disaster_type,  # Saved with converted label
                             source_type=source_type.__tablename__
                         )
-                        db_session.add(new_result)
+                        with db_lock:
+                            db_session.add(new_result)
                         item.processed = True
                         print(f"Processed {source_type.__tablename__} {original.id}")
                 except Exception as e:
@@ -114,8 +116,8 @@ class DisasterTweetModel:
                     self.process_and_save_results(db_session, untranslated_topics, Topics)
                     self.process_and_save_results(db_session, untranslated_replies, Replies)
                     self.process_and_save_results(db_session, untranslated_comments, UsersComments)
-
-                db_session.commit()
+                    with db_lock:
+                        db_session.commit()
                 print("[Debug] Model write successful, sleeping for 10 seconds...")
                 time.sleep(10)
         except SQLAlchemyError as db_err:

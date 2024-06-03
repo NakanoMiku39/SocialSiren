@@ -21,6 +21,7 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from flask_jwt_extended import create_access_token, JWTManager, jwt_required, get_jwt_identity
 import os
 import time
+from lock import db_lock
 
 class Backend:
     def __init__(self, db_path):
@@ -141,15 +142,17 @@ class Backend:
         """处理并存储消息"""
         db_session = self.session()
         try:
-            new_comment = UsersComments(
-                content=content,
-                date_time=datetime.now(),  # 使用当前时间
-                processed=False
-            )
-            db_session.add(new_comment)
-            db_session.commit()
-            print(f"[Debug] Message stored: {content}")
-            return {"status": "success", "message": "Message processed and stored successfully"}
+            with db_session.no_autoflush:
+                new_comment = UsersComments(
+                    content=content,
+                    date_time=datetime.now(),  # 使用当前时间
+                    processed=False
+                )
+                with db_lock:
+                    db_session.add(new_comment)
+                    db_session.commit()
+                print(f"[Debug] Message stored: {content}")
+                return {"status": "success", "message": "Message processed and stored successfully"}
         except Exception as e:
             db_session.rollback()
             print(f"[Debug] Error storing message: {e}")
@@ -353,9 +356,11 @@ def rate_warning():
     existing_rating = db_session.query(WarningRating).filter_by(user_id=user_id, warning_id=warning_id, type=rating_type).first()
     if existing_rating:
         return jsonify({'status': 'error', 'message': 'You have already rated this warning'}), 400
-
-    new_rating = WarningRating(user_id=user_id, warning_id=warning_id, type=rating_type, rating=rating)
-    db_session.add(new_rating)
+   
+    with db_session.no_autoflush:
+        new_rating = WarningRating(user_id=user_id, warning_id=warning_id, type=rating_type, rating=rating)
+        with db_lock:
+            db_session.add(new_rating)
 
     if rating_type == 'authenticity':
         warning.authenticity_rating += rating
@@ -365,8 +370,9 @@ def rate_warning():
         warning.accuracy_raters += 1
     else:
         return jsonify({'status': 'error', 'message': 'Invalid rating type'}), 400
-
-    db_session.commit()
+    
+    with db_lock:
+        db_session.commit()
 
     return jsonify({
         'status': 'success',
@@ -396,8 +402,10 @@ def delete_warning():
 
     warning.delete_votes += 1
 
-    new_vote = WarningVote(user_id=user_id, warning_id=warning_id, vote_type='delete')
-    db_session.add(new_vote)
+    with db_session.no_autoflush:
+        new_vote = WarningVote(user_id=user_id, warning_id=warning_id, vote_type='delete')
+        with db_lock:
+            db_session.add(new_vote)
 
     if warning.delete_votes >= 1:  # Adjust the threshold as needed
         with db_session.no_autoflush:
@@ -405,17 +413,20 @@ def delete_warning():
             # Check if the warning is related to any GDACS information
             if backend.model.is_related_to_any_gdacs(db_session, warning.disaster_type + warning.disaster_location):
                 print("[Debug] Warning is related to GDACS information, deletion aborted.")
-                db_session.commit()
+                with db_lock:
+                    db_session.commit()
                 return jsonify({'status': 'error', 'message': 'Warning is related to GDACS information and cannot be deleted.'}), 403
 
             print("[Debug] Warning is not related to any GDACS information, proceeding with deletion...")
-            for rating in warning.ratings:
-                db_session.delete(rating)
-            db_session.delete(warning)
-            db_session.commit()
+            with db_lock:
+                for rating in warning.ratings:
+                    db_session.delete(rating)
+                db_session.delete(warning)
+                db_session.commit()
             return jsonify({'status': 'success', 'message': 'Warning deleted successfully'}), 200
 
-    db_session.commit()
+    with db_lock:
+        db_session.commit()
     print("[Debug] Delete vote recorded. Pending more votes.")
     return jsonify({'status': 'pending', 'message': 'Vote recorded. Pending more votes. Checking if the message is correct...'}), 202
 
@@ -437,8 +448,10 @@ def rate_message():
     if existing_rating:
         return jsonify({'status': 'error', 'message': 'You have already rated this message'}), 400
 
-    new_rating = Rating(user_id=user_id, message_id=message_id, type=rating_type, rating=rating)
-    db_session.add(new_rating)
+    with db_session.no_autoflush:
+        new_rating = Rating(user_id=user_id, message_id=message_id, type=rating_type, rating=rating)
+        with db_lock:
+            db_session.add(new_rating)
 
     if rating_type == 'authenticity':
         message.authenticity_rating += rating
@@ -449,7 +462,8 @@ def rate_message():
     else:
         return jsonify({'status': 'error', 'message': 'Invalid rating type'}), 400
 
-    db_session.commit()
+    with db_lock:
+        db_session.commit()
 
     return jsonify({
         'status': 'success',
@@ -478,8 +492,10 @@ def delete_message():
 
     message.delete_votes += 1
 
-    new_vote = Vote(user_id=user_id, message_id=message_id, vote_type='delete')
-    db_session.add(new_vote)
+    with db_session.no_autoflush:
+        new_vote = Vote(user_id=user_id, message_id=message_id, vote_type='delete')
+        with db_lock:
+            db_session.add(new_vote)
 
     if message.delete_votes >= 1:  # Adjust the threshold as needed
         with db_session.no_autoflush:
@@ -487,17 +503,19 @@ def delete_message():
             # Check if the message is related to any GDACS information
             if backend.model.is_related_to_any_gdacs(db_session, message.content):
                 print("[Debug] Message is related to GDACS information, deletion aborted.")
-                db_session.commit()
+                with db_lock:
+                    db_session.commit()
                 return jsonify({'status': 'error', 'message': 'Message is related to GDACS information and cannot be deleted.'}), 403
 
             print("[Debug] Message is not related to any GDACS information, proceeding with deletion...")
-            for rating in message.ratings:
-                db_session.delete(rating)
-            db_session.delete(message)
-            db_session.commit()
+            with db_lock:
+                for rating in message.ratings:
+                    db_session.delete(rating)
+                db_session.delete(message)
+                db_session.commit()
             return jsonify({'status': 'success', 'message': 'Message deleted successfully'}), 200
-
-    db_session.commit()
+    with db_lock:
+        db_session.commit()
     print("[Debug] Delete vote recorded. Pending more votes.")
     return jsonify({'status': 'pending', 'message': 'Vote recorded. Pending more votes. Checking if the message is correct...'}), 202
 

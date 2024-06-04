@@ -86,31 +86,36 @@ class Backend:
         return translator, model, subscriptionsystem, datamanager, captchaservice
 
     def spider_task(self):
+        config = configparser.ConfigParser()
+        config.read('config.ini')
         while True:
             self.spider_event.wait()
-            # 初始化 Spider
-            config = configparser.ConfigParser()
-            config.read('config.ini')
-            spider = class_spider.Spider(config, self.session, self.options)
-            print("Spider is running...")
-            spider.run()  # 假设 Spider 有一个 run 方法
-            # time.sleep(60)  # 运行一定时间后停止
-            print("Spider is stopping...")
-            spider.stop()  # 假设 Spider 有一个 stop 方法
-            self.spider_event.clear()
-            self.gdacs_event.set()
+            try:
+                spider = class_spider.Spider(config, self.session, self.options)
+                print("Spider is running...")
+                spider.run()
+                print("Spider is stopping...")
+                spider.stop()
+            except Exception as e:
+                print(f"Spider task failed: {e}")
+            finally:
+                self.spider_event.clear()
+                self.gdacs_event.set()
 
     def gdacs_task(self):
         while True:
             self.gdacs_event.wait()
-            print("GDACS is running...")
-            gdacsspider = class_GDACSspider.GDACSSpider("/home/nakanomiku/Downloads/", "./data", self.session, self.options)
-            gdacsspider.run()  # 假设 GDACS 有一个 run 方法
-            # time.sleep(60)  # 运行一定时间后停止
-            print("GDACS is stopping...")
-            gdacsspider.stop()  # 假设 GDACS 有一个 stop 方法
-            self.gdacs_event.clear()
-            self.spider_event.set()
+            try:
+                print("GDACS is running...")
+                gdacsspider = class_GDACSspider.GDACSSpider("/home/nakanomiku/Downloads/", "./data", self.session, self.options)
+                gdacsspider.run()
+                print("GDACS is stopping...")
+                gdacsspider.stop()
+            except Exception as e:
+                print(f"GDACS task failed: {e}")
+            finally:
+                self.gdacs_event.clear()
+                self.spider_event.set()
             
     def run_subsystems(self):
         """启动子系统线程"""

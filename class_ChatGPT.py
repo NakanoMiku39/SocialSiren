@@ -1,5 +1,5 @@
 import time
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, OperationalError
 from class_datatypes import Topics, Replies, UsersComments, Result, Warning, GDACS
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
@@ -7,12 +7,12 @@ from langchain.chat_models import ChatOpenAI
 from lock import db_lock
 
 class LangChainModel:
-    def __init__(self, Session, apikey, model_name='gpt-3.5-turbo'): #gpt-3.5-turbo or gpt-4
+    def __init__(self, Session, apikey, model_name='gpt-3.5-turbo'):  # gpt-3.5-turbo or gpt-4
         self.Session = Session
         self.model_name = model_name
         self.llm = ChatOpenAI(api_key=apikey, model_name=model_name)
         self.prompt = PromptTemplate.from_template(
-        """
+            """
             你现在是一个灾害专家，现在我会给你一系列的文本输入，你需要判断该文本是否为灾害相关推文，如果是，从中提取出灾害的类型，如果可能，从中提取出灾害的时间和地点，如果不是则不需要给出之后三个信息，你的输出格式如下，填写这四个字段，除此之外不要再给出任何额外输出，无论我的输入是什么，你必须永远严格按照以上的要求并用英语回答：
             是否为灾害 灾害类型 时间 地点
 
@@ -29,7 +29,7 @@ class LangChainModel:
 
             Human: {question}
             AI:
-        """
+            """
         )
         self.chain = LLMChain(llm=self.llm, prompt=self.prompt)
         print("[Debug] Model initialized")
@@ -69,38 +69,48 @@ class LangChainModel:
             return existing_warning.id
         return None
 
-    def process_and_save_results(self, db_session, items, source_type):
+    def process_and_save_results(self, db_session, items, source_type, max_retries=5):
         for item in items:
-            original = db_session.query(source_type).filter(source_type.id == item.id).first()
-            if original:
+            retries = 0
+            while retries < max_retries:
                 try:
-                    question = item.content
-                    response = self.chain.run({"question": question})
-                    is_disaster, disaster_type, disaster_location, disaster_time = self.parse_response(response)
-                    if is_disaster:
-                        with db_session.no_autoflush:
-                            warning_id = self.create_warning_if_needed(db_session, is_disaster, disaster_type, disaster_location, disaster_time)
-                            new_result = Result(
-                                source_id=original.id,
-                                content=original.content,  # Use original content
-                                date_time=item.date_time,
-                                is_disaster=1,
-                                probability=1.0,  # Assume high confidence for simplicity
-                                disaster_type=disaster_type,
-                                source_type=source_type.__tablename__,
-                                warning_id=warning_id
-                            )
-                            with db_lock:
-                                db_session.add(new_result)
-                            item.processed = True
+                    original = db_session.query(source_type).filter(source_type.id == item.id).first()
+                    if original:
+                        question = item.content
+                        response = self.chain.run({"question": question})
+                        is_disaster, disaster_type, disaster_location, disaster_time = self.parse_response(response)
+                        if is_disaster:
+                            with db_session.no_autoflush:
+                                warning_id = self.create_warning_if_needed(db_session, is_disaster, disaster_type, disaster_location, disaster_time)
+                                new_result = Result(
+                                    source_id=original.id,
+                                    content=original.content,  # Use original content
+                                    date_time=item.date_time,
+                                    is_disaster=1,
+                                    probability=1.0,  # Assume high confidence for simplicity
+                                    disaster_type=disaster_type,
+                                    source_type=source_type.__tablename__,
+                                    warning_id=warning_id
+                                )
+                                with db_lock:
+                                    db_session.add(new_result)
+                        item.processed = True  # Ensure the processed flag is set for all items
+                        db_session.commit()  # Commit after processing each item
                         print(f"Processed {source_type.__tablename__} {original.id}")
+                        break  # 成功处理后跳出重试循环
+                except OperationalError as e:
+                    retries += 1
+                    print(f"Database is locked, retrying ({retries}/{max_retries})...")
+                    time.sleep(1)
                 except Exception as e:
                     print(f"Failed processing {source_type.__tablename__} {original.id}: {str(e)}")
+                    db_session.rollback()  # Rollback if any error occurs
+                    raise
 
     def predict_and_save(self):
-        db_session = self.Session()
-        try:
-            while True:
+        while True:
+            db_session = self.Session()
+            try:
                 print("[Debug] Checking for new data to process...")
                 topics = db_session.query(Topics).filter(Topics.processed == False).all()
                 replies = db_session.query(Replies).filter(Replies.processed == False).all()
@@ -110,19 +120,18 @@ class LangChainModel:
                     self.process_and_save_results(db_session, topics, Topics)
                     self.process_and_save_results(db_session, replies, Replies)
                     self.process_and_save_results(db_session, comments, UsersComments)
-                with db_lock:
-                    db_session.commit()
+
                 print("[Debug] Model write successful, sleeping for 10 seconds...")
                 time.sleep(10)
-        except SQLAlchemyError as db_err:
-            db_session.rollback()
-            print(f"Database error during processing: {db_err}")
-        except Exception as e:
-            db_session.rollback()
-            print(f"Error during processing: {e}")
-        finally:
-            db_session.close()
-            print("[Debug] Database session closed.")
+            except SQLAlchemyError as db_err:
+                db_session.rollback()
+                print(f"Database error during processing: {db_err}")
+            except Exception as e:
+                db_session.rollback()
+                print(f"Error during processing: {e}")
+            finally:
+                db_session.close()
+                print("[Debug] Database session closed.")
     
     def is_related_to_gdacs(self, message_content, gdacs_content):
         question = f"Is the following message related to this GDACS information?\nMessage: {message_content}\nGDACS: {gdacs_content}\nYou must answer 'Yes' or 'No' only, no other extra sentences or vocabularies:"

@@ -1,0 +1,10 @@
+[User]
+username = your-pku-account
+password = password
+entries = 5
+mode = realtime
+timeout = 60
+email = your-pku-email
+
+[GPT]
+apikey = your-api-key
